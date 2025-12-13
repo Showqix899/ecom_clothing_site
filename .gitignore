@@ -1,0 +1,84 @@
+# ===============================
+# Python
+# ===============================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+
+# ===============================
+# Virtual Environments
+# ===============================
+env/
+venv/
+ENV/
+.venv/
+.python-version
+
+# ===============================
+# Django Stuff
+# ===============================
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+
+# Migrations (optional)
+# Uncomment if you want to ignore migrations
+# **/migrations/
+# !**/migrations/__init__.py
+
+# ===============================
+# Environment Variables
+# ===============================
+.env
+.env.*
+!.env.example
+
+# ===============================
+# Django REST / API
+# ===============================
+*.jwt
+*.pem
+*.key
+
+# ===============================
+# Celery / Redis
+# ===============================
+celerybeat-schedule
+celerybeat.pid
+redis.dump
+
+# ===============================
+# Testing / Coverage
+# ===============================
+htmlcov/
+.coverage
+.coverage.*
+.pytest_cache/
+nosetests.xml
+test-results/
+
+# ===============================
+# IDEs / Editors
+# ===============================
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# ===============================
+# OS Files
+# ===============================
+.DS_Store
+Thumbs.db
+
+# ===============================
+# Build / Distribution
+# ===============================
+build/
+dist/
+*.egg-info/

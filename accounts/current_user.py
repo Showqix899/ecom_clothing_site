@@ -47,3 +47,11 @@ def get_current_user(request):
         return None, "Invalid token"
     except Exception as e:
         return None, f"Unexpected error: {str(e)}"
+
+
+#check if user is logged in
+def is_user_logged_in(user_id):
+    user = collection.find_one({"_id": ObjectId(user_id)}, {"refresh_tokens": 1})
+    if not user:
+        return False
+    return len(user.get("refresh_tokens", [])) > 0

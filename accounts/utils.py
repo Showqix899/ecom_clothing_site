@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from django.conf import settings
 
-ACCESS_EXPIRE_MIN = 15
+ACCESS_EXPIRE_MIN = 120
 REFRESH_EXPIRE_DAYS = 7
 
 

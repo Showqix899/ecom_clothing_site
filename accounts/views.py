@@ -194,6 +194,9 @@ def logout(request):
     body = json.loads(request.body)
     refresh_token = body.get("refresh_token")
 
+    if not refresh_token:
+        return JsonResponse({"error": "refresh_token required"}, status=400)
+
     try:
         payload = jwt.decode(
             refresh_token,
@@ -201,12 +204,26 @@ def logout(request):
             algorithms=["HS256"]
         )
 
-        collection.update_one(
+        jti = payload.get("jti")
+
+        if not isinstance(jti, str):
+            return JsonResponse({"error": "Invalid token structure"}, status=401)
+
+        result = collection.update_one(
             {"_id": ObjectId(payload["sub"])},
-            {"$pull": {"refresh_tokens": payload["jti"]}}
+            {
+                "$set": {"logged_in": False},
+                "$pull": {"refresh_tokens": jti},
+            }
         )
 
+        if result.matched_count == 0:
+            return JsonResponse({"error": "User not found"}, status=404)
+
         return JsonResponse({"message": "Logged out successfully"})
+
+    except jwt.ExpiredSignatureError:
+        return JsonResponse({"error": "Token expired"}, status=401)
 
     except jwt.InvalidTokenError:
         return JsonResponse({"error": "Invalid token"}, status=401)
@@ -236,6 +253,9 @@ def refresh_token(request):
             return JsonResponse({"error": "Invalid token"}, status=401)
 
         user = collection.find_one({"_id": ObjectId(payload["sub"])})
+        
+        if user['logged_in'] == False:
+            return JsonResponse({"error": "User is logged out"}, status=401)
 
         if not user or payload["jti"] not in user.get("refresh_tokens", []):
             return JsonResponse({"error": "Token revoked"}, status=401)
@@ -261,6 +281,8 @@ def create_modarator(request):
     role = None
     user,error= get_current_user(request)
     
+    if user['logged_in'] == False:
+        return JsonResponse({"error":"User is logged out"},status=401)
     
     if error:
         return JsonResponse({"error":error})
@@ -339,8 +361,218 @@ def test_data(request):
     user,error = get_current_user(request)
     
     
+    
     if error:
         return JsonResponse({"error":error},status=401)
     
+    if user['logged_in'] == False:
+        return JsonResponse({"error":"User is logged out"},status=401)
     
-    return JsonResponse({"user":user})
+    
+    return JsonResponse({"user":user,"status":user['logged_in']})
+
+
+
+#normal user update
+@csrf_exempt
+def update_user(request):
+    
+    if request.method !="PUT":
+        
+        if request.method =="GET":
+            user, error = get_current_user(request)
+            if error:
+                return JsonResponse({"error": error}, status=401)
+            if user['logged_in'] == False:
+                return JsonResponse({"error": "User is logged out"}, status=401)
+            
+            user.pop("password", None)
+            user.pop("refresh_tokens", None)
+            user.pop("login_attempt", None)
+            user.pop("timeout_untill", None)
+            return JsonResponse({"user": user})
+        return JsonResponse({"error":"PUT method required"},status=405)
+    
+    user,error = get_current_user(request)
+    
+    if error:
+        
+        return JsonResponse({"error":error},status=401)
+    
+    body = json.loads(request.body)
+    username = body.get('username')
+    address= body.get('address')
+    phone = body.get('phone')
+    email = body.get('email')
+    
+    update_fields = {}
+    if address:
+        update_fields['address']= address
+    if phone:
+        update_fields['phone']= phone
+    if email:
+        update_fields['email']= email
+    if not update_fields:
+        return JsonResponse({"error":"No fields to update"},status=400)
+    
+    collection.update_one(
+        {"_id":ObjectId(user['_id'])},
+        {"$set":update_fields}
+    )
+    return JsonResponse({"message":"User updated successfully","updated_fields":update_fields,'user':user})
+
+
+
+
+#admin user update other users
+@csrf_exempt
+def admin_update_user(request,user_id):
+    
+    if request.method !="PUT":
+        
+        if request.method =="GET":
+            user = collection.find_one({"_id":ObjectId(user_id)})
+            if not user:
+                return JsonResponse({"error":"User not found"},status=404)
+            user_safe = dict(user)
+            user_safe["_id"] = str(user_safe["_id"])
+            user_safe.pop("password", None)
+            user_safe.pop("refresh_tokens", None)
+            user_safe.pop("login_attempt", None)
+            user_safe.pop("timeout_untill", None)
+            return JsonResponse({"user":user_safe})
+        return JsonResponse({"error":"PUT method required"},status=405)
+    
+    admin_user,error = get_current_user(request)
+    
+    if error:
+        
+        return JsonResponse({"error":error},status=401)
+    
+    if admin_user.get('role') != 'admin' and admin_user['logged_in'] == True:
+        
+        return JsonResponse({"error":"You are not authorized to perform this action"},status=403)
+    
+    body = json.loads(request.body)
+    username = body.get('username')
+    address= body.get('address')
+    phone = body.get('phone')
+    email = body.get('email')
+    role = body.get('role')
+    
+    update_fields = {}
+    if username:
+        update_fields['username']= username
+    if address:
+        update_fields['address']= address
+    if phone:
+        update_fields['phone']= phone
+    if email:
+        update_fields['email']= email
+    if role:
+        update_fields['role']= role
+    if not update_fields:
+        return JsonResponse({"error":"No fields to update"},status=400)
+    
+    collection.update_one(
+        {"_id":ObjectId(user_id)},
+        {"$set":update_fields}
+    )
+    return JsonResponse({"message":"User updated successfully","updated_fields":update_fields})
+
+
+
+
+#user deletion by admin
+@csrf_exempt
+def delete_user(request,user_id):
+    
+    if request.method != "DELETE":
+        
+        return JsonResponse({"error":"DELETE method required"},status=405)
+    
+    admin_user,error = get_current_user(request)
+    
+    if error:
+        
+        return JsonResponse({"error":error},status=401)
+    
+    if admin_user.get('role') != 'admin' and admin_user['logged_in'] == True:
+        
+        return JsonResponse({"error":"You are not authorized to perform this action"},status=403)
+    
+    
+    result = collection.delete_one({"_id":ObjectId(user_id)})
+    
+    if result.deleted_count ==0:
+        
+        return JsonResponse({"error":"User not found"},status=404)
+    
+    return JsonResponse({"message":"User deleted successfully"})
+
+
+#admin user list all users
+@csrf_exempt
+def list_users(request):
+    
+    if request.method != "GET":
+        
+        return JsonResponse({"error":"GET method required"},status=405)
+    
+    admin_user,error = get_current_user(request)
+    
+    if error:
+        
+        return JsonResponse({"error":error},status=401)
+    
+    if admin_user.get('role') != 'admin' and admin_user['logged_in'] == True:
+        
+        return JsonResponse({"error":"You are not authorized to perform this action"},status=403)
+    
+    
+    users_cursor = collection.find()
+    users = []
+    for user in users_cursor:
+        user_safe = dict(user)
+        user_safe["_id"] = str(user_safe["_id"])
+        user_safe.pop("password", None)
+        user_safe.pop("refresh_tokens", None)
+        user_safe.pop("login_attempt", None)
+        user_safe.pop("timeout_untill", None)
+        users.append(user_safe)
+    
+    return JsonResponse({"users":users})
+
+#admin user get single user details
+@csrf_exempt
+def get_user_details(request,user_id):
+    
+    if request.method != "GET":
+        
+        return JsonResponse({"error":"GET method required"},status=405)
+    
+    admin_user,error = get_current_user(request)
+    
+    if error:
+        
+        return JsonResponse({"error":error},status=401)
+    
+    if admin_user.get('role') != 'admin' and admin_user['logged_in'] == True:
+        
+        return JsonResponse({"error":"You are not authorized to perform this action"},status=403)
+    
+    
+    user = collection.find_one({"_id":ObjectId(user_id)})
+    
+    if not user:
+        
+        return JsonResponse({"error":"User not found"},status=404)
+    
+    user_safe = dict(user)
+    user_safe["_id"] = str(user_safe["_id"])
+    user_safe.pop("password", None)
+    user_safe.pop("refresh_tokens", None)
+    user_safe.pop("login_attempt", None)
+    user_safe.pop("timeout_untill", None)
+    
+    return JsonResponse({"user":user_safe})

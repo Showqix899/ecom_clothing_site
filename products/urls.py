@@ -13,8 +13,28 @@ urlpatterns = [
     # Categories
     path('add-category/', views.add_category, name='add_category'),
     path('delete-category/<str:category_id>/', views.delete_category, name='delete_category'),
+    
+    
+    #get all attributes
+    path('get-attributes/', views.get_attributes, name='get_attributes'),
 
     # Products
     path('create-product/', views.create_product, name='create_product'),
+    
+    #get products details
+    path('product-details/<str:product_id>/', views.get_product_details, name='product_details'),
+    
+    #update product
+    path('update-product/<str:product_id>/', views.update_product, name='update_product'),
+    
+    #delete product
+    path('delete-product/<str:product_id>/', views.delete_product, name='delete_product'),
+    
+    #get all products
+    path('all-products/', views.get_all_products, name='all_products'),
+    
+    
+    #update product images
+    path('update-product-images/<str:product_id>/', views.update_product_images, name='update_product_images'),
 
 ]

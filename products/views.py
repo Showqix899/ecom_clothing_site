@@ -562,3 +562,6 @@ def update_product_images(request, product_id):
             {'error': 'Internal server error', 'details': str(e)},
             status=500
         )
+        
+        
+        

@@ -39,10 +39,16 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'rest_framework',
+    
+    #Custom apps
     'accounts',
     'products',
+    'cart',
+    'order',
+    
+    #Third party apps
     'cloudinary_storage',
+    'rest_framework',
     'corsheaders',
     
 ]

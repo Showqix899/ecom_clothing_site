@@ -14,7 +14,9 @@ from config.permissions import is_user_admin, is_user_moderator
 from datetime import datetime, timezone, timedelta
 from django.http import QueryDict
 from django.http.multipartparser import MultiPartParser, MultiPartParserError
-
+from log.utils import (attribute_creation_log,attribute_delation_log
+                       ,product_create_log,product_deletion_log,
+                       product_update_log)
 import cloudinary.uploader
 
 products_col = db["products"] #product collection
@@ -54,6 +56,10 @@ def add_color(request):
         color_data = {'name': color_name.lower()}
         result = colors_col.insert_one(color_data)
         
+        #adding log
+        color = colors_col.find_one({'_id':ObjectId(result.inserted_id)})
+        attribute_creation_log(request,color,user)
+        
         return JsonResponse({'message': 'Color added successfully.', 'color_id': str(result.inserted_id)}, status=201)
     
     
@@ -75,9 +81,13 @@ def delete_color(request, color_id):
     
     
     if request.method == 'DELETE':
+        color = colors_col.find_one({"_id":ObjectId(color_id)})
         result = colors_col.delete_one({'_id': ObjectId(color_id)})
         if result.deleted_count == 0:
             return JsonResponse({'error': 'Color not found.'}, status=404)
+        
+        #attribute deletion log
+        attribute_delation_log(request,color,user)
         return JsonResponse({'message': 'Color deleted successfully.'}, status=200)
     
     
@@ -114,7 +124,18 @@ def add_size(request):
         size_data = {'name': size_name.lower()}
         result = sizes_col.insert_one(size_data)
         
+        #attribute logging 
+        size = sizes_col.find_one({"_id":ObjectId(result.inserted_id)})
+        attribute_creation_log(request,size,user)
+        
+        
+        
         return JsonResponse({'message': 'Size added successfully.', 'size_id': str(result.inserted_id)}, status=201)
+    
+    
+    
+    
+    
 #delete size
 @csrf_exempt
 def delete_size(request, size_id):
@@ -131,9 +152,13 @@ def delete_size(request, size_id):
     
     
     if request.method == 'DELETE':
+        size = sizes_col.find_one({"_id":ObjectId(size_id)})
         result = sizes_col.delete_one({'_id': ObjectId(size_id)})
         if result.deleted_count == 0:
             return JsonResponse({'error': 'Size not found.'}, status=404)
+
+        #logging size
+        attribute_delation_log(request,size,user)
         return JsonResponse({'message': 'Size deleted successfully.'}, status=200)
     
     
@@ -167,6 +192,12 @@ def add_category(request):
         category_data = {'name': category_name.lower()}
         result = categories_col.insert_one(category_data)
         
+        #logging
+        category = categories_col.find_one({'_id':ObjectId(result.inserted_id)})
+        attribute_creation_log(request,category,user)
+        
+        
+        
         return JsonResponse({'message': 'Category added successfully.', 'category_id': str(result.inserted_id)}, status=201)
 
 
@@ -185,9 +216,12 @@ def delete_category(request, category_id):
     
     
     if request.method == 'DELETE':
+        category = categories_col.find_one({'_id':ObjectId(category_id)})
         result = categories_col.delete_one({'_id': ObjectId(category_id)})
         if result.deleted_count == 0:
             return JsonResponse({'error': 'Category not found.'}, status=404)
+        
+        attribute_delation_log(request,category,user)
         return JsonResponse({'message': 'Category deleted successfully.'}, status=200)
     
     
@@ -271,6 +305,11 @@ def create_product(request):
             }
 
             result = products_col.insert_one(product_data)
+            
+            product_name = product_data['name']
+            product_id = str(result.inserted_id)
+            
+            product_create_log(product_id,product_name,user)
 
             return JsonResponse({
                 'message': 'Product created successfully',
@@ -311,7 +350,6 @@ def get_product_details(request, product_id):
 #product update view for admin
 @csrf_exempt
 def update_product(request, product_id):
-    product = None
     try:
         user, error = get_current_user(request)
         if error:
@@ -323,103 +361,116 @@ def update_product(request, product_id):
                 status=403
             )
 
-        # ---------- UPDATE PRODUCT ----------
-        # if request.method == 'PUT' or (request.method == 'POST' and request.POST.get('_method') == 'PUT'):
-        if request.method == 'PUT':
-            data = QueryDict(request.body, encoding='utf-8')
+        product = products_col.find_one({'_id': ObjectId(product_id)})
+        if not product:
+            return JsonResponse({'error': 'Product not found'}, status=404)
 
-            product = products_col.find_one({'_id': ObjectId(product_id)})
-            if not product:
-                return JsonResponse({'error': 'Product not found'}, status=404)
+        # ---------- UPDATE PRODUCT ----------
+        if request.method == 'PUT':
+            # ---------- PARSE BODY ----------
+            try:
+                if request.content_type == 'application/json':
+                    data = json.loads(request.body)
+                else:
+                    data = QueryDict(request.body, encoding='utf-8')
+            except:
+                return JsonResponse({'error': 'Invalid request body'}, status=400)
 
             update_data = {}
+            changed_fields = []
+
+            # ---------- HELPER FUNCTIONS ----------
+            def get_value(key):
+                if hasattr(data, 'getlist'):
+                    return data.get(key)
+                return data.get(key)
+
+            def get_list(key):
+                if hasattr(data, 'getlist'):
+                    return data.getlist(key)
+                return data.get(key, [])
 
             # -------- BASIC FIELDS --------
-            if data.get('name'):
-                update_data['name'] = data.get('name')
-
-            if data.get('description'):
-                update_data['description'] = data.get('description')
-
-            if data.get('price'):
-                update_data['price'] = float(data.get('price'))
-
-            if data.get('stock'):
-                update_data['stock'] = int(data.get('stock'))
-
-            if data.get('category_id'):
-                update_data['category_id'] = ObjectId(data.get('category_id'))
+            for field in ['name', 'description', 'price', 'stock', 'category_id', 'image_urls']:
+                value = get_value(field)
+                if value is not None:
+                    if field == 'price':
+                        value = float(value)
+                    elif field == 'stock':
+                        value = int(value)
+                    elif field == 'category_id':
+                        value = ObjectId(value)
+                    update_data[field] = value
+                    changed_fields.append(field)
 
             # -------- COLORS --------
-            existing_colors = product.get('color_ids', [])
+            if 'add_color_ids' in data or 'remove_color_ids' in data:
+                colors = product.get('color_ids', [])
+                remove_colors = get_list('remove_color_ids')
+                add_colors = get_list('add_color_ids')
 
-            add_colors = data.getlist('add_color_ids')
-            remove_colors = data.getlist('remove_color_ids')
-
-            if remove_colors:
-                existing_colors = [
-                    cid for cid in existing_colors if str(cid) not in remove_colors
-                ]
-
-            if add_colors:
-                for cid in add_colors:
-                    obj_id = ObjectId(cid)
-                    if obj_id not in existing_colors:
-                        existing_colors.append(obj_id)
-
-            update_data['color_ids'] = existing_colors
+                colors = [c for c in colors if str(c) not in remove_colors]
+                for c in add_colors:
+                    obj_id = ObjectId(c)
+                    if obj_id not in colors:
+                        colors.append(obj_id)
+                update_data['color_ids'] = colors
+                if add_colors or remove_colors:
+                    changed_fields.append('color_ids')
 
             # -------- SIZES --------
-            existing_sizes = product.get('size_ids', [])
+            if 'add_size_ids' in data or 'remove_size_ids' in data:
+                sizes = product.get('size_ids', [])
+                remove_sizes = get_list('remove_size_ids')
+                add_sizes = get_list('add_size_ids')
 
-            add_sizes = data.getlist('add_size_ids')
-            remove_sizes = data.getlist('remove_size_ids')
+                sizes = [s for s in sizes if str(s) not in remove_sizes]
+                for s in add_sizes:
+                    obj_id = ObjectId(s)
+                    if obj_id not in sizes:
+                        sizes.append(obj_id)
+                update_data['size_ids'] = sizes
+                if add_sizes or remove_sizes:
+                    changed_fields.append('size_ids')
 
-            if remove_sizes:
-                existing_sizes = [
-                    sid for sid in existing_sizes if str(sid) not in remove_sizes
-                ]
-
-            if add_sizes:
-                for sid in add_sizes:
-                    obj_id = ObjectId(sid)
-                    if obj_id not in existing_sizes:
-                        existing_sizes.append(obj_id)
-
-            update_data['size_ids'] = existing_sizes
-
-            # -------- IMAGES --------
-            update_data['image_urls'] = product.get('image_urls', [])
+            if not update_data:
+                return JsonResponse({'error': 'No fields provided to update'}, status=400)
 
             update_data['updated_at'] = datetime.now(timezone.utc)
-            
-            for field, value in update_data.items():
-                print(f'Updating field: {field} to value: {value}')
 
             products_col.update_one(
                 {'_id': ObjectId(product_id)},
                 {'$set': update_data}
             )
 
-            return JsonResponse({'message': 'Product updated successfully'}, status=200)
+            # ---------- FETCH UPDATED PRODUCT ----------
+            updated_product = products_col.find_one({'_id': ObjectId(product_id)})
+            
+            product_update_log(update_data,product, user)
+
+            return JsonResponse({
+                'message': 'Product updated successfully',
+                'updated_fields': changed_fields,
+                'product_id': str(product_id)
+            }, status=200)
 
         # ---------- GET PRODUCT ----------
         elif request.method == 'GET':
-            product = products_col.find_one({'_id': ObjectId(product_id)})
-            if not product:
-                return JsonResponse({'error': 'Product not found'}, status=404)
-
             product['_id'] = str(product['_id'])
-            product['category_id'] = str(product.get('category_id'))
-            product['color_ids'] = [str(cid) for cid in product.get('color_ids', [])]
-            product['size_ids'] = [str(sid) for sid in product.get('size_ids', [])]
+            product['category_id'] = str(product.get('category_id')) if product.get('category_id') else None
+            product['color_ids'] = [str(c) for c in product.get('color_ids', [])]
+            product['size_ids'] = [str(s) for s in product.get('size_ids', [])]
             product['created_at'] = product['created_at'].isoformat()
             product['updated_at'] = product.get('updated_at')
 
             return JsonResponse({'product': product}, status=200)
 
+        else:
+            return JsonResponse({'error': 'Method not allowed'}, status=405)
+
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
+
 
 
 
@@ -438,10 +489,12 @@ def delete_product(request, product_id):
             )
 
         if request.method == 'DELETE':
+            product=products_col.find_one({"_id":ObjectId(product_id)})
             result = products_col.delete_one({'_id': ObjectId(product_id)})
             if result.deleted_count == 0:
                 return JsonResponse({'error': 'Product not found'}, status=404)
 
+            product_deletion_log(product,user)
             return JsonResponse({'message': 'Product deleted successfully'}, status=200)
 
     except Exception as e:

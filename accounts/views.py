@@ -295,77 +295,47 @@ def refresh_token(request):
 
 #modarator creator
 @csrf_exempt
-def create_modarator(request):
+def create_modarator_or_admin(request,user_id):
     
-    if request.method != "POST":
+    if request.method != "PUT":
         return JsonResponse({"error": "POST method required"}, status=405)
 
     body = json.loads(request.body)
-    role = None
     user,error= get_current_user(request)
-    
-    if user['logged_in'] == False:
-        return JsonResponse({"error":"User is logged out"},status=401)
     
     if error:
         return JsonResponse({"error":error})
-    role = user.get('role')
     
-    
-    if role != "admin":
+    if is_user_admin(user) == False:
         
         return JsonResponse({
             "error":"You are not authorized to do this action"
         })
         
-    username = body.get("username")
-    password = body.get("password")
-    email = body.get('email')
-    address=body.get('address')
-    phone= body.get('phone')
-
     
-    hash_pass = hash_password(password)
+    if user['logged_in'] == False:
+        return JsonResponse({"error":"User is logged out"},status=401)
     
-    if username == None:
+    role = body.get('role')
+    
+    
+    if role not in ['admin','moderator']:
+        return JsonResponse({"error":"role must be either 'admin' or 'moderator'"})
 
-            return JsonResponse({"error":"Please enter a username"})
-        
-    if password == None:
-
-            return JsonResponse({"error":"please enter a password."})
-
-    if len(password)<4:
-
-            return JsonResponse({"error":"password is too short"})
-        
-    if phone == None:
-
-            return JsonResponse({"error":"phone number is required"})
-
-    existing = collection.find_one({"username":username})
-
-    if existing:
-            return JsonResponse({"error": "username already exists"},status=400)
-        
-
-    hash_pass = hash_password(password)
-
-
+    #check if user exists
+    updating_user = collection.find_one({"_id":ObjectId(user_id)})
+    if not updating_user:
+        return JsonResponse({"error":"User not found"},status=404)
+    
+    #update role
     try:
-            collection.insert_one({
-            "username":username,
-            'email':email,
-            "password":hash_pass,
-            "logged_in":False,
-            "role":"moderator",
-            'address':address,
-            'phone':phone,
-            "refresh_tokens": [],
-            'created_at':datetime.now(timezone.utc),
-            "login_attempt":0,
-            "timeout_untill":None
-        })
+        result = collection.update_one(
+            {"_id":ObjectId(user_id)},
+            {"$set":{"role":role}}
+        )
+        
+        if result.matched_count ==0:
+            return JsonResponse({"error":"User not found"},status=404)
             
     except Exception as e:
             return JsonResponse({"error":str(e)})
@@ -942,4 +912,93 @@ def get_normal_user_details(request):
             "average_order_value": avg_order_value
         }
 
+    }, status=200)
+    
+    
+#user search
+def search_users(request):
+
+    if request.method != "GET":
+        return JsonResponse({"error": "GET method required"}, status=405)
+
+    query = {}
+
+    # ---------- FILTER BY ROLE ----------
+    role = request.GET.get("role")
+    if role:
+        if role not in ["user", "admin", "moderator"]:
+            return JsonResponse({"error": "Invalid role"}, status=400)
+        query["role"] = role
+
+    # ---------- SEARCH BY USER ID ----------
+    user_id = request.GET.get("user_id")
+    if user_id:
+        try:
+            query["_id"] = ObjectId(user_id)
+        except:
+            return JsonResponse({"error": "Invalid user_id"}, status=400)
+
+    # ---------- SEARCH BY USERNAME ----------
+    username = request.GET.get("username")
+    if username:
+        query["username"] = {"$regex": username, "$options": "i"}
+
+    # ---------- SEARCH BY EMAIL ----------
+    email = request.GET.get("email")
+    if email:
+        query["email"] = {"$regex": email, "$options": "i"}
+
+    # ---------- SEARCH BY PHONE ----------
+    phone = request.GET.get("phone")
+    if phone:
+        query["phone"] = {"$regex": phone, "$options": "i"}
+
+    # ---------- SORTING ----------
+    sort_by = request.GET.get("sort_by", "created_at")
+    order = request.GET.get("order", "desc")
+
+    allowed_sort_fields = ["created_at", "username", "email", "role"]
+    if sort_by not in allowed_sort_fields:
+        return JsonResponse({"error": "Invalid sort field"}, status=400)
+
+    sort_order = -1 if order == "desc" else 1
+
+    # ---------- PAGINATION ----------
+    try:
+        page = int(request.GET.get("page", 1))
+        limit = int(request.GET.get("limit", 10))
+    except:
+        return JsonResponse({"error": "Invalid pagination values"}, status=400)
+
+    if page < 1 or limit < 1:
+        return JsonResponse({"error": "Page and limit must be positive"}, status=400)
+
+    skip = (page - 1) * limit
+
+    total_users = collection.count_documents(query)
+
+    users = (
+        collection
+        .find(query)
+        .sort(sort_by, sort_order)
+        .skip(skip)
+        .limit(limit)
+    )
+
+    # ---------- CLEAN RESPONSE ----------
+    user_list = []
+    for user in users:
+        user["_id"] = str(user["_id"])
+        user.pop("password", None)
+        user.pop("refresh_tokens", None)
+        user.pop("login_attempt", None)
+        user.pop("timeout_untill", None)
+        user_list.append(user)
+
+    return JsonResponse({
+        "total": total_users,
+        "page": page,
+        "limit": limit,
+        "total_pages": ceil(total_users / limit),
+        "users": user_list
     }, status=200)

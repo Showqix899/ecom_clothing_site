@@ -11,8 +11,19 @@ import jwt
 from config.mongo import db
 from .current_user import get_current_user
 from .utils import create_access_token, create_refresh_token
+from config.permissions import is_user_admin, is_user_moderator
+from math import ceil
+from log.utils import login_log,logout_log,register_log,user_update_log,user_delete_log
 
 collection = db['user']
+cart_col=db['carts']
+order_col=db['orders']
+payment_col=db['payments']
+import os 
+from dotenv import load_dotenv
+load_dotenv()
+MAX_LOGIN_ATTEMPTS = 5
+LOCK_DURATION_MINUTES = 5
 
 
 #user registration
@@ -51,7 +62,7 @@ def register(request):
 
 
         try:
-            collection.insert_one({
+            result =collection.insert_one({
             "username":username,
             'email':email,
             "password":hash_pass,
@@ -63,7 +74,11 @@ def register(request):
             'created_at':datetime.now(timezone.utc),
             "login_attempt":0,
             "timeout_untill":None
-        })
+            })
+            
+            #loggin the registration
+            user = collection.find_one({"_id": result.inserted_id})
+            register_log(request,user)
             
         except Exception as e:
             return JsonResponse({"error":str(e)})
@@ -78,155 +93,163 @@ def register(request):
 #user login
 @csrf_exempt
 def login(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST method required"}, status=405)
 
-    if request.method == "POST":
-
-        body = json.loads(request.body)
-
+    try:
+        body = json.loads(request.body or "{}")
         username = body.get("username")
         password = body.get("password")
 
-        user = collection.find_one({"username":username})
-
-        if not user:
-            return JsonResponse({"error":"invalid username"},status=400)
-        
-        now = datetime.now(timezone.utc)
-
-        timeout_untill = user.get("timeout_untill")
-
-        if timeout_untill and timeout_untill.tzinfo is None:
-
-            timeout_untill = timeout_untill.replace(tzinfo=timezone.utc)
-
-        if timeout_untill and now <timeout_untill:
-            remaining = int((timeout_untill-now).total_seconds()//60)
-
-            return JsonResponse({
-                "error":f'You are blocked. Try again after {remaining} minutes'
-            })
-        
-        if not verify_password(password,user['password']):
-
-            new_attempt = user['login_attempt']+1
-
-            if new_attempt>=5:
-                lock_time = now+timedelta(minutes=5)
-                collection.update_one(
-                    {"_id":user["_id"]},
-                    {
-                        "$set":{
-                            "login_attempt":5,
-                            "timeout_untill":lock_time
-                        }
-                    }
-                )
-
-                return JsonResponse({
-                    "error":"Too many failed attempts. You are blocked for 5 minutes"
-                },status = 403)
-        
-
-            collection.update_one(
-                {"_id":user['_id']},
-                {"$set":{
-                    "login_attempt":new_attempt
-                }}
+        if not username or not password:
+            return JsonResponse(
+                {"error": "username and password are required"},
+                status=400
             )
 
-            return JsonResponse({
-                "error":f'Invalid password. Attempt left: {5 -new_attempt}'
-            },status=400)
-        
+        user = collection.find_one({"username": username})
+        if not user:
+            return JsonResponse({"error": "Invalid credentials"}, status=401)
+
+        now = datetime.now(timezone.utc)
+
+        timeout_until = user.get("timeout_until")
+        if timeout_until and timeout_until < now:
+            # unlock user
+            collection.update_one(
+                {"_id": user["_id"]},
+                {"$set": {"login_attempt": 0, "timeout_until": None}}
+            )
+            user["login_attempt"] = 0
+            timeout_until = None
+
+        if timeout_until and now < timeout_until:
+            remaining = int((timeout_until - now).total_seconds() // 60)
+            return JsonResponse(
+                {"error": f"Account locked. Try again in {remaining} minutes"},
+                status=403
+            )
+
+        if not verify_password(password, user["password"]):
+            attempts = user.get("login_attempt", 0) + 1
+
+            update = {"login_attempt": attempts}
+
+            if attempts >= MAX_LOGIN_ATTEMPTS:
+                update["timeout_until"] = now + timedelta(minutes=LOCK_DURATION_MINUTES)
+
+            collection.update_one({"_id": user["_id"]}, {"$set": update})
+
+            return JsonResponse(
+                {
+                    "error": "Invalid credentials",
+                    "attempts_left": max(0, MAX_LOGIN_ATTEMPTS - attempts)
+                },
+                status=401
+            )
+
+        # -------- SUCCESS --------
         access_token = create_access_token(user["_id"], user["role"])
         refresh_token, jti = create_refresh_token(user["_id"])
-        
+
         collection.update_one(
-            {"_id":user["_id"]},
-            {"$set":{
-                "logged_in":True,
-                "login_attempt":0,
-                "timeout_untill":None
-            },
-             "$push":{
-                 "refresh_tokens":jti
-             }
-             }
+            {"_id": user["_id"]},
+            {
+                "$set": {
+                    "logged_in": True,
+                    "login_attempt": 0,
+                    "timeout_until": None
+                },
+                "$push": {"refresh_tokens": jti}
+            }
         )
 
-        user['_id']=str(user['_id'])
-        
-        return JsonResponse({
-            "user":user,
-            "access_token":access_token,
-            "refresh_token":refresh_token,
-            "message": "Login successful",
-        },status=200)
+        login_log(request, user)
+
+        safe_user = {
+            "_id": str(user["_id"]),
+            "username": user["username"],
+            "email": user.get("email"),
+            "role": user["role"]
+        }
+
+        return JsonResponse(
+            {
+                "message": "Login successful",
+                "user": safe_user,
+                "access_token": access_token,
+                "refresh_token": refresh_token
+            },
+            status=200
+        )
+
+    except Exception as e:
+        return JsonResponse(
+            {"error": "Internal server error", "details": str(e)},
+            status=500
+        )
+
         
         
         
 
-# @csrf_exempt
-# def logout(request,username):
-     
-#     user = collection.find_one({"username":username})
-
-#     if user is None:
-         
-#         return JsonResponse({"error":"username not found"})
-
-#     if user['logged_in']==False:
-         
-#         return JsonResponse({"error":"user is not authenticated"})
-     
-#     collection.update_one(
-#         {"_id":user["_id"]},
-#         {"$set":{"logged_in":False}}
-#     )
-
-#     return JsonResponse({"message":"user successfully logged out"})
 
 
 
 #user log out
 @csrf_exempt
 def logout(request):
-    body = json.loads(request.body)
-    refresh_token = body.get("refresh_token")
-
-    if not refresh_token:
-        return JsonResponse({"error": "refresh_token required"}, status=400)
+    if request.method != "POST":
+        return JsonResponse({"error": "POST method required"}, status=405)
 
     try:
+        body = json.loads(request.body or "{}")
+        refresh_token = body.get("refresh_token")
+
+        if not refresh_token:
+            return JsonResponse({"error": "refresh_token required"}, status=400)
+
         payload = jwt.decode(
             refresh_token,
             settings.SECRET_KEY,
             algorithms=["HS256"]
         )
 
-        jti = payload.get("jti")
+        if payload.get("type") != "refresh":
+            return JsonResponse({"error": "Invalid token type"}, status=401)
 
-        if not isinstance(jti, str):
-            return JsonResponse({"error": "Invalid token structure"}, status=401)
+        user_id = payload["sub"]
+        jti = payload["jti"]
 
-        result = collection.update_one(
-            {"_id": ObjectId(payload["sub"])},
+        user = collection.find_one({"_id": ObjectId(user_id)})
+        if not user:
+            return JsonResponse({"error": "User not found"}, status=404)
+
+        # Idempotent logout
+        collection.update_one(
+            {"_id": ObjectId(user_id)},
             {
                 "$set": {"logged_in": False},
-                "$pull": {"refresh_tokens": jti},
+                "$pull": {"refresh_tokens": jti}
             }
         )
 
-        if result.matched_count == 0:
-            return JsonResponse({"error": "User not found"}, status=404)
+        logout_log(request, user)
 
-        return JsonResponse({"message": "Logged out successfully"})
+        return JsonResponse({"message": "Logged out successfully"}, status=200)
 
     except jwt.ExpiredSignatureError:
         return JsonResponse({"error": "Token expired"}, status=401)
 
     except jwt.InvalidTokenError:
         return JsonResponse({"error": "Invalid token"}, status=401)
+
+    except Exception as e:
+        return JsonResponse(
+            {"error": "Internal server error", "details": str(e)},
+            status=500
+        )
+
 
 
 
@@ -419,6 +442,9 @@ def update_user(request):
         {"_id":ObjectId(user['_id'])},
         {"$set":update_fields}
     )
+    #log the update
+    updated_by = collection.find_one({"_id":ObjectId(user['_id'])})
+    user_update_log(request, user,updated_by, update_fields)
     return JsonResponse({"message":"User updated successfully","updated_fields":update_fields,'user':user})
 
 
@@ -426,59 +452,84 @@ def update_user(request):
 
 #admin user update other users
 @csrf_exempt
-def admin_update_user(request,user_id):
-    
-    if request.method !="PUT":
-        
-        if request.method =="GET":
-            user = collection.find_one({"_id":ObjectId(user_id)})
-            if not user:
-                return JsonResponse({"error":"User not found"},status=404)
-            user_safe = dict(user)
-            user_safe["_id"] = str(user_safe["_id"])
-            user_safe.pop("password", None)
-            user_safe.pop("refresh_tokens", None)
-            user_safe.pop("login_attempt", None)
-            user_safe.pop("timeout_untill", None)
-            return JsonResponse({"user":user_safe})
-        return JsonResponse({"error":"PUT method required"},status=405)
-    
-    admin_user,error = get_current_user(request)
-    
+def admin_update_user(request, user_id):
+
+    # ---------- VALIDATE USER ID ----------
+    try:
+        user_object_id = ObjectId(user_id)
+    except:
+        return JsonResponse({"error": "Invalid user ID"}, status=400)
+
+    # ---------- GET USER (ADMIN VIEW) ----------
+    if request.method == "GET":
+        user = collection.find_one({"_id": user_object_id})
+        if not user:
+            return JsonResponse({"error": "User not found"}, status=404)
+
+        user_safe = dict(user)
+        user_safe["_id"] = str(user_safe["_id"])
+
+        # remove sensitive fields
+        for field in ["password", "refresh_tokens", "login_attempt", "timeout_untill"]:
+            user_safe.pop(field, None)
+
+        return JsonResponse({"user": user_safe}, status=200)
+
+    # ---------- ONLY PUT ALLOWED ----------
+    if request.method != "PUT":
+        return JsonResponse({"error": "PUT method required"}, status=405)
+
+    # ---------- AUTHENTICATION ----------
+    admin_user, error = get_current_user(request)
     if error:
-        
-        return JsonResponse({"error":error},status=401)
-    
-    if admin_user.get('role') != 'admin' and admin_user['logged_in'] == True:
-        
-        return JsonResponse({"error":"You are not authorized to perform this action"},status=403)
-    
-    body = json.loads(request.body)
-    username = body.get('username')
-    address= body.get('address')
-    phone = body.get('phone')
-    email = body.get('email')
-    role = body.get('role')
-    
-    update_fields = {}
-    if username:
-        update_fields['username']= username
-    if address:
-        update_fields['address']= address
-    if phone:
-        update_fields['phone']= phone
-    if email:
-        update_fields['email']= email
-    if role:
-        update_fields['role']= role
+        return JsonResponse({"error": error}, status=401)
+
+    # ---------- AUTHORIZATION ----------
+    if admin_user.get("role") != "admin" or not admin_user.get("logged_in"):
+        return JsonResponse(
+            {"error": "You are not authorized to perform this action"},
+            status=403
+        )
+
+    # ---------- PARSE REQUEST BODY ----------
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON body"}, status=400)
+
+    # ---------- ALLOWED FIELDS ----------
+    allowed_fields = ["username", "address", "phone", "email", "role"]
+    update_fields = {
+        field: body[field]
+        for field in allowed_fields
+        if field in body and body[field]
+    }
+
     if not update_fields:
-        return JsonResponse({"error":"No fields to update"},status=400)
-    
+        return JsonResponse({"error": "No valid fields to update"}, status=400)
+
+    # ---------- CHECK USER EXISTS ----------
+    user_before_update = collection.find_one({"_id": user_object_id})
+    if not user_before_update:
+        return JsonResponse({"error": "User not found"}, status=404)
+
+    # ---------- UPDATE USER ----------
     collection.update_one(
-        {"_id":ObjectId(user_id)},
-        {"$set":update_fields}
+        {"_id": user_object_id},
+        {"$set": update_fields}
     )
-    return JsonResponse({"message":"User updated successfully","updated_fields":update_fields})
+
+    # ---------- LOG UPDATE ----------
+    updated_by = collection.find_one({"_id": ObjectId(admin_user["_id"])})
+    user_update_log(request, user_before_update, updated_by, update_fields)
+
+    return JsonResponse(
+        {
+            "message": "User updated successfully",
+            "updated_fields": update_fields
+        },
+        status=200
+    )
 
 
 
@@ -508,6 +559,9 @@ def delete_user(request,user_id):
         
         return JsonResponse({"error":"User not found"},status=404)
     
+    #log deletion
+    user = collection.find_one({"_id": ObjectId(user_id)})
+    user_delete_log(request,user,admin_user)
     return JsonResponse({"message":"User deleted successfully"})
 
 
@@ -545,34 +599,347 @@ def list_users(request):
 
 #admin user get single user details
 @csrf_exempt
-def get_user_details(request,user_id):
-    
+def get_user_details(request, user_id):
+
+    # -------- METHOD CHECK --------
     if request.method != "GET":
-        
-        return JsonResponse({"error":"GET method required"},status=405)
-    
-    admin_user,error = get_current_user(request)
-    
+        return JsonResponse({"error": "GET method required"}, status=405)
+
+    #-------- AUTH --------
+    admin_user, error = get_current_user(request)
     if error:
-        
-        return JsonResponse({"error":error},status=401)
-    
-    if admin_user.get('role') != 'admin' and admin_user['logged_in'] == True:
-        
-        return JsonResponse({"error":"You are not authorized to perform this action"},status=403)
-    
-    
-    user = collection.find_one({"_id":ObjectId(user_id)})
-    
+        return JsonResponse({"error": error}, status=401)
+
+    if admin_user.get('role') != 'admin':
+        return JsonResponse(
+            {"error": "You are not authorized to perform this action"},
+            status=403
+        )
+
+    # -------- GET USER --------
+    user = collection.find_one({"_id": ObjectId(user_id)})
     if not user:
-        
-        return JsonResponse({"error":"User not found"},status=404)
+        return JsonResponse({"error": "User not found"}, status=404)
     
+
+    # -------- SAFE USER DATA --------
     user_safe = dict(user)
     user_safe["_id"] = str(user_safe["_id"])
     user_safe.pop("password", None)
     user_safe.pop("refresh_tokens", None)
     user_safe.pop("login_attempt", None)
     user_safe.pop("timeout_untill", None)
+
+    # ================= CART INFO =================
+    cart = cart_col.find_one({"user_id": str(user_id)})
+    cart_info = {
+        "items_count": len(cart["items"]) if cart else 0,
+        "updated_at": cart.get("updated_at") if cart else None
+    }
+
+    # ================= QUERY PARAMS =================
+    order_status = request.GET.get("order_status")
+    payment_status = request.GET.get("payment_status")
+
+    page = int(request.GET.get("page", 1))
+    limit = int(request.GET.get("limit", 10))
+    skip = (page - 1) * limit
+
+    # ================= ORDERS =================
+    order_query = {"user_id": ObjectId(user_id)}
+
+    if order_status:
+        order_query["order_status"] = order_status
+
+    if payment_status:
+        order_query["payment_status"] = payment_status
+
+    total_orders = order_col.count_documents(order_query)
+
+    orders_cursor = (
+        order_col
+        .find(order_query)
+        .sort("created_at", -1)
+        .skip(skip)
+        .limit(limit)
+    )
+
+    orders = []
+    for order in orders_cursor:
+        order["_id"] = str(order["_id"])
+        order["user_id"] = str(order["user_id"])
+
+        for item in order.get("items", []):
+            item["product_id"] = str(item["product_id"])
+            item["color_id"] = str(item["color_id"])
+            item["size_id"] = str(item["size_id"])
+
+        orders.append(order)
+
+    # ================= PAYMENTS =================
+    payment_page = int(request.GET.get("payment_page", 1))
+    payment_limit = int(request.GET.get("payment_limit", 10))
+    payment_skip = (payment_page - 1) * payment_limit
+
+    payment_query = {"user_id": ObjectId(user_id)}
+    if payment_status:
+        payment_query["status"] = payment_status
+
+    total_payments = payment_col.count_documents(payment_query)
+
+    payments_cursor = (
+        payment_col
+        .find(payment_query)
+        .sort("submitted_at", -1)
+        .skip(payment_skip)
+        .limit(payment_limit)
+    )
+
+    payments = []
+    total_paid_amount = 0
+    paid_count = 0
+    submitted_count = 0
+
+    for payment in payments_cursor:
+        payment["_id"] = str(payment["_id"])
+        payment["user_id"] = str(payment["user_id"])
+        payment["order_id"] = str(payment["order_id"])
+
+        if payment["status"] == "submitted":
+            submitted_count += 1
+
+        if payment["status"] == "paid":
+            paid_count += 1
+            order = order_col.find_one({"_id": ObjectId(payment["order_id"])})
+            if order:
+                total_paid_amount += order.get("total_price", 0)
+
+        payments.append(payment)
+
+    # ================= ANALYTICS =================
+    completed_orders = order_col.count_documents({
+        "user_id": ObjectId(user_id),
+        "order_status": "completed"
+    })
+
+    cancelled_orders = order_col.count_documents({
+        "user_id": ObjectId(user_id),
+        "order_status": {"$in": ["cancelled", "expired"]}
+    })
+
+    avg_order_value = (
+        round(total_paid_amount / paid_count, 2)
+        if paid_count > 0 else 0
+    )
+
+    # ================= FINAL RESPONSE =================
+    return JsonResponse({
+        "user": user_safe,
+
+        "cart": cart_info,
+
+        "orders": {
+            "data": orders,
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total_orders": total_orders,
+                "total_pages": ceil(total_orders / limit)
+            }
+        },
+
+        "payments": {
+            "data": payments,
+            "pagination": {
+                "page": payment_page,
+                "limit": payment_limit,
+                "total_payments": total_payments,
+                "total_pages": ceil(total_payments / payment_limit)
+            }
+        },
+
+        "analytics": {
+            "total_orders": total_orders,
+            "completed_orders": completed_orders,
+            "cancelled_or_expired_orders": cancelled_orders,
+            "total_payments": total_payments,
+            "submitted_payments": submitted_count,
+            "paid_payments": paid_count,
+            "total_spent": total_paid_amount,
+            "average_order_value": avg_order_value
+        }
+
+    }, status=200)
     
-    return JsonResponse({"user":user_safe})
+    
+#user details by user
+@csrf_exempt
+def get_normal_user_details(request):
+
+    # -------- METHOD CHECK --------
+    if request.method != "GET":
+        return JsonResponse({"error": "GET method required"}, status=405)
+
+    #-------- AUTH --------
+    user, error = get_current_user(request)
+    if error:
+        return JsonResponse({"error": error}, status=401)
+    
+    
+    if user['logged_in'] == False:
+        return JsonResponse({"error": "User is logged out"}, status=401)
+
+    
+    user_id = str(user["_id"])
+    
+
+    
+
+    # -------- SAFE USER DATA --------
+    user_safe = dict(user)
+    user_safe["_id"] = str(user_safe["_id"])
+    user_safe.pop("password", None)
+    user_safe.pop("refresh_tokens", None)
+    user_safe.pop("login_attempt", None)
+    user_safe.pop("timeout_untill", None)
+
+    # ================= CART INFO =================
+    cart = cart_col.find_one({"user_id": str(user_id)})
+    cart_info = {
+        "items_count": len(cart["items"]) if cart else 0,
+        "updated_at": cart.get("updated_at") if cart else None
+    }
+
+    # ================= QUERY PARAMS =================
+    order_status = request.GET.get("order_status")
+    payment_status = request.GET.get("payment_status")
+
+    page = int(request.GET.get("page", 1))
+    limit = int(request.GET.get("limit", 10))
+    skip = (page - 1) * limit
+
+    # ================= ORDERS =================
+    order_query = {"user_id": ObjectId(user_id)}
+
+    if order_status:
+        order_query["order_status"] = order_status
+
+    if payment_status:
+        order_query["payment_status"] = payment_status
+
+    total_orders = order_col.count_documents(order_query)
+
+    orders_cursor = (
+        order_col
+        .find(order_query)
+        .sort("created_at", -1)
+        .skip(skip)
+        .limit(limit)
+    )
+
+    orders = []
+    for order in orders_cursor:
+        order["_id"] = str(order["_id"])
+        order["user_id"] = str(order["user_id"])
+
+        for item in order.get("items", []):
+            item["product_id"] = str(item["product_id"])
+            item["color_id"] = str(item["color_id"])
+            item["size_id"] = str(item["size_id"])
+
+        orders.append(order)
+
+    # ================= PAYMENTS =================
+    payment_page = int(request.GET.get("payment_page", 1))
+    payment_limit = int(request.GET.get("payment_limit", 10))
+    payment_skip = (payment_page - 1) * payment_limit
+
+    payment_query = {"user_id": ObjectId(user_id)}
+    if payment_status:
+        payment_query["status"] = payment_status
+
+    total_payments = payment_col.count_documents(payment_query)
+
+    payments_cursor = (
+        payment_col
+        .find(payment_query)
+        .sort("submitted_at", -1)
+        .skip(payment_skip)
+        .limit(payment_limit)
+    )
+
+    payments = []
+    total_paid_amount = 0
+    paid_count = 0
+    submitted_count = 0
+
+    for payment in payments_cursor:
+        payment["_id"] = str(payment["_id"])
+        payment["user_id"] = str(payment["user_id"])
+        payment["order_id"] = str(payment["order_id"])
+
+        if payment["status"] == "submitted":
+            submitted_count += 1
+
+        if payment["status"] == "paid":
+            paid_count += 1
+            order = order_col.find_one({"_id": ObjectId(payment["order_id"])})
+            if order:
+                total_paid_amount += order.get("total_price", 0)
+
+        payments.append(payment)
+
+    # ================= ANALYTICS =================
+    completed_orders = order_col.count_documents({
+        "user_id": ObjectId(user_id),
+        "order_status": "completed"
+    })
+
+    cancelled_orders = order_col.count_documents({
+        "user_id": ObjectId(user_id),
+        "order_status": {"$in": ["cancelled", "expired"]}
+    })
+
+    avg_order_value = (
+        round(total_paid_amount / paid_count, 2)
+        if paid_count > 0 else 0
+    )
+
+    # ================= FINAL RESPONSE =================
+    return JsonResponse({
+        "user": user_safe,
+
+        "cart": cart_info,
+
+        "orders": {
+            "data": orders,
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total_orders": total_orders,
+                "total_pages": ceil(total_orders / limit)
+            }
+        },
+
+        "payments": {
+            "data": payments,
+            "pagination": {
+                "page": payment_page,
+                "limit": payment_limit,
+                "total_payments": total_payments,
+                "total_pages": ceil(total_payments / payment_limit)
+            }
+        },
+
+        "analytics": {
+            "total_orders": total_orders,
+            "completed_orders": completed_orders,
+            "cancelled_or_expired_orders": cancelled_orders,
+            "total_payments": total_payments,
+            "submitted_payments": submitted_count,
+            "paid_payments": paid_count,
+            "total_spent": total_paid_amount,
+            "average_order_value": avg_order_value
+        }
+
+    }, status=200)

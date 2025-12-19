@@ -9,6 +9,7 @@ from config.mongo import db
 from accounts.current_user import get_current_user
 from cart.utils import get_user_cart
 from config.permissions import is_user_admin,is_user_moderator
+import math
 
 orders_col = db['orders']
 carts_col = db['carts']
@@ -200,7 +201,7 @@ def get_all_orders(request):
 
 
 
-#search order by user, status, date range,total price range, product name
+# search order by user, status, date range, total price range, product name
 @csrf_exempt
 def search_orders(request):
     # -------- AUTH --------
@@ -227,6 +228,22 @@ def search_orders(request):
     month = request.GET.get('month')             # 1 - 12
     year = request.GET.get('year')               # YYYY
 
+    # -------- PAGINATION --------
+    try:
+        page = int(request.GET.get('page', 1))
+        page_size = int(request.GET.get('page_size', 10))
+    except ValueError:
+        return JsonResponse({'error': 'Invalid pagination params'}, status=400)
+
+    if page < 1:
+        page = 1
+
+    MAX_PAGE_SIZE = 100
+    if page_size > MAX_PAGE_SIZE:
+        page_size = MAX_PAGE_SIZE
+
+    skip = (page - 1) * page_size
+
     # -------- BUILD QUERY --------
     query = {}
 
@@ -250,7 +267,6 @@ def search_orders(request):
     # -------- DATE FILTERS --------
     now = datetime.now(timezone.utc)
 
-    # 🔹 predefined date ranges
     if date_range:
         if date_range == 'today':
             start = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -270,7 +286,6 @@ def search_orders(request):
 
         query['created_at'] = {'$gte': start, '$lte': now}
 
-    # 🔹 explicit month/year filter
     elif month or year:
         if not year:
             return JsonResponse(
@@ -282,11 +297,11 @@ def search_orders(request):
         month = int(month) if month else 1
 
         start = datetime(year, month, 1, tzinfo=timezone.utc)
-
-        if month == 12:
-            end = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
-        else:
-            end = datetime(year, month + 1, 1, tzinfo=timezone.utc)
+        end = (
+            datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+            if month == 12
+            else datetime(year, month + 1, 1, tzinfo=timezone.utc)
+        )
 
         query['created_at'] = {'$gte': start, '$lt': end}
 
@@ -294,48 +309,70 @@ def search_orders(request):
     if product_name:
         query['items.name'] = {'$regex': product_name, '$options': 'i'}
 
-    # -------- FETCH ORDERS --------
-    orders = orders_col.find(query).sort('created_at', -1)
+    # -------- TOTAL COUNT --------
+    total_orders_count = orders_col.count_documents(query)
 
-    orders_list = []
+    # -------- ANALYTICS (ALL MATCHED ORDERS) --------
+    analytics_cursor = orders_col.find(query)
+
     total_revenue = 0
     total_items_sold = 0
     status_breakdown = {}
 
-    for order in orders:
-        order['_id'] = str(order['_id'])
-        order['user_id'] = str(order['user_id'])
-
+    for order in analytics_cursor:
         total_revenue += order.get('total_price', 0)
 
         status = order.get('order_status', 'unknown')
         status_breakdown[status] = status_breakdown.get(status, 0) + 1
 
         for item in order.get('items', []):
+            total_items_sold += item.get('quantity', 0)
+
+    # -------- PAGINATED DATA --------
+    orders_cursor = (
+        orders_col
+        .find(query)
+        .sort('created_at', -1)
+        .skip(skip)
+        .limit(page_size)
+    )
+
+    orders_list = []
+    for order in orders_cursor:
+        order['_id'] = str(order['_id'])
+        order['user_id'] = str(order['user_id'])
+
+        for item in order.get('items', []):
             item['product_id'] = str(item['product_id'])
             item['color_id'] = str(item['color_id'])
             item['size_id'] = str(item['size_id'])
-            total_items_sold += item.get('quantity', 0)
 
         orders_list.append(order)
 
-    total_orders = len(orders_list)
-    avg_order_value = (
-        total_revenue / total_orders if total_orders else 0
-    )
+    total_pages = math.ceil(total_orders_count / page_size)
 
     # -------- RESPONSE --------
     return JsonResponse(
         {
             'analytics': {
-                'total_orders': total_orders,
-                'total_amount_orderd': total_revenue,
-                'avg_order_value': round(avg_order_value, 2),
+                'total_orders': total_orders_count,
+                'total_amount_ordered': total_revenue,
+                'avg_order_value': round(
+                    total_revenue / total_orders_count, 2
+                ) if total_orders_count else 0,
                 'total_items_sold': total_items_sold,
                 'by_status': status_breakdown
             },
-            'count': total_orders,
+            'pagination': {
+                'page': page,
+                'page_size': page_size,
+                'total_pages': total_pages,
+                'total_records': total_orders_count,
+                'has_next': page < total_pages,
+                'has_prev': page > 1
+            },
+            'count': len(orders_list),
             'orders': orders_list
         },
         status=200
-    )    
+    )

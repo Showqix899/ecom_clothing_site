@@ -32,6 +32,7 @@ def logout_log(request, user):
     try:
         log_entry = {
             "actor_id": str(user["_id"]),
+            "actor_name":user['name'],
             "actor_type": "user",
             "action": "user_logout",
             "entity_type": "user",
@@ -51,6 +52,7 @@ def register_log(request, user):
     try:
         log_entry = {
             "actor_id": str(user["_id"]),
+            "actor_name":user['name'],
             "actor_type": "user",
             "action": "user_register",
             "entity_type": "user",
@@ -70,6 +72,7 @@ def user_delete_log(request, user, deleted_by):
     try:
         log_entry = {
             "actor_id": str(deleted_by["_id"]),
+            "actor_name":user['name'],
             "actor_type": deleted_by['role'],
             "action": "user_delete",
             "entity_type": "user",
@@ -89,6 +92,7 @@ def user_update_log(request, user, updated_by, updated_fields):
     try:
         log_entry = {
             "actor_id": str(updated_by["_id"]),
+            "actor_name":updated_by['name'],
             "actor_type": updated_by['role'],
             "action": "user_update",
             "entity_type": "user",
@@ -111,6 +115,7 @@ def product_create_log(product_id, product_name,created_by):
     try:
         log_entry = {
             "actor_id": str(created_by["_id"]),
+            "actor_name":created_by['name'],
             "actor_type": created_by['role'],
             "action": "product_create",
             "entity_type": "product",
@@ -130,6 +135,7 @@ def product_deletion_log(product, deleted_by):
     try:
         log_entry = {
             "actor_id": str(deleted_by["_id"]),
+            "actor_name":deleted_by['name'],
             "actor_type": deleted_by['role'],
             "action": "product_delete",
             "entity_type": "product",
@@ -151,6 +157,7 @@ def product_update_log(update_data,product,updated_by):
     try:
         log_entry = {
             "actor_id": str(updated_by["_id"]),
+            "actor_name":update_data['name'],
             "actor_type": updated_by['role'],
             "action": "product_update",
             "entity_type": "product",
@@ -174,6 +181,7 @@ def attribute_creation_log(request, attribute, created_by):
         
         log_entry = {
             "actor_id": str(created_by["_id"]),
+            "actor_name":created_by['name'],
             "actor_type": created_by['role'],
             "action": "attribute_create",
             "entity_type": "attribute",
@@ -189,13 +197,14 @@ def attribute_creation_log(request, attribute, created_by):
 
 
 # attribute deletation logging
-def attribute_delation_log(request, attribute, updated_by):
+def attribute_delation_log(request, attribute, deleted_by):
     
         
     try:
         log_entry = {
-            "actor_id": str(updated_by["_id"]),
-            "actor_type": updated_by['role'],
+            "actor_id": str(deleted_by["_id"]),
+            "actor_name":deleted_by["name"],
+            "actor_type": deleted_by['role'],
             "action": "attribute_delete",
             "entity_type": "attribute",
             "entity_id": str(attribute["_id"]),
@@ -207,3 +216,49 @@ def attribute_delation_log(request, attribute, updated_by):
         log_collection.insert_one(log_entry)
     except:
         pass
+    
+# order updation logging
+def order_updation_log(order, updated_by):
+    
+    try:
+        log_entry = {
+            "actor_id": str(updated_by["_id"]),
+            "actor_name":updated_by['name'],
+            "actor_type": updated_by['role'],
+            "action": "Order Updation",
+            "entity_type": "Order",
+            "entity_id": str(order["_id"]),
+            "entity_name":order['name'],
+            "description": f"order was updated by {updated_by['username']}",
+            "metadata": {
+                "updated_by":updated_by['username']
+                },
+            "timestamp": datetime.now(timezone.utc)
+        }
+        log_collection.insert_one(log_entry)
+    except:
+        pass
+    
+    
+#order deletion logging
+def order_deletion_log(order,deleted_by):
+    
+    try:
+        log_entry = {
+            "actor_id": str(deleted_by["_id"]),
+            "actor_name":deleted_by['name'],
+            "actor_type": deleted_by['role'],
+            "action": "Order deleted",
+            "entity_type": "Order",
+            "entity_id": str(order["_id"]),
+            "actor_name":order['name'],
+            "description": f"order was deleted by {deleted_by['username']}",
+            "metadata": {
+                "deleted_by":deleted_by['username']
+                },
+            "timestamp": datetime.now(timezone.utc)
+        }
+        log_collection.insert_one(log_entry)
+    except:
+        pass
+        

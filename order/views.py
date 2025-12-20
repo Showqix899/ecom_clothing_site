@@ -10,6 +10,8 @@ from accounts.current_user import get_current_user
 from cart.utils import get_user_cart
 from config.permissions import is_user_admin,is_user_moderator
 import math
+from math import ceil
+from log.utils import order_updation_log,order_deletion_log
 
 orders_col = db['orders']
 carts_col = db['carts']
@@ -40,6 +42,16 @@ def place_order(request):
    
     if not shipping_address:
         shipping_address = user.get('address')
+    
+    transection_id = body.get('transection_id')
+    
+    #check if the transection id is valid or not
+    
+    # if len(transection_id)< 10 or len(transection_id)>10:
+    #     return JsonResponse({"error":"not a valid transection id"})
+    
+    if not transection_id:
+        return JsonResponse({"error":"must require a valid transection id"})
 
     cart = get_user_cart(user['_id'])
     print(f'cart: {cart}')
@@ -57,6 +69,8 @@ def place_order(request):
 
     order_items = []
     total_price = 0
+    
+    
 
     # -------- STOCK CHECK --------
     for item in selected_items:
@@ -89,6 +103,7 @@ def place_order(request):
         'total_price': total_price,
         'payment_status': 'pending',
         'order_status': 'pending',
+        "transection_id":transection_id,
         'created_at': datetime.now(timezone.utc),
         'updated_at': None
     }
@@ -177,18 +192,35 @@ def get_all_orders(request):
     if request.method != 'GET':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
 
+    # -------- PAGINATION PARAMS --------
     try:
-        orders = orders_col.find()
-        orders_list = []
+        page = int(request.GET.get('page', 1))
+        limit = int(request.GET.get('limit', 10))
+        page = max(page, 1)
+        limit = min(max(limit, 1), 100)  # max 100 per page
+    except ValueError:
+        return JsonResponse({'error': 'Invalid pagination params'}, status=400)
+
+    skip = (page - 1) * limit
+
+    try:
+        total_orders = orders_col.count_documents({})
+        orders_cursor = (
+            orders_col
+            .find()
+            .skip(skip)
+            .limit(limit)
+            .sort('_id', -1)
+        )
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
-    for order in orders:
-        # --- convert order-level ObjectIds ---
+    orders_list = []
+
+    for order in orders_cursor:
         order['_id'] = str(order['_id'])
         order['user_id'] = str(order['user_id'])
 
-        # --- convert item-level ObjectIds ---
         for item in order.get('items', []):
             item['product_id'] = str(item['product_id'])
             item['color_id'] = str(item['color_id'])
@@ -196,8 +228,19 @@ def get_all_orders(request):
 
         orders_list.append(order)
 
-    return JsonResponse({'orders': orders_list}, status=200)
+    total_pages = ceil(total_orders / limit)
 
+    return JsonResponse({
+        'pagination': {
+            'page': page,
+            'limit': limit,
+            'total_orders': total_orders,
+            'total_pages': total_pages,
+            'has_next': page < total_pages,
+            'has_prev': page > 1,
+        },
+        'orders': orders_list
+    }, status=200)
 
 
 
@@ -376,3 +419,103 @@ def search_orders(request):
         },
         status=200
     )
+    
+    
+#update orders
+@csrf_exempt
+def update_order(request,order_id):
+    
+    if request.method != 'PUT':
+        
+        return JsonResponse({"error":"method is not allowed"})
+    
+    user,error = get_current_user(request)
+    
+    if error:
+        return JsonResponse({"error":error})
+    
+
+    if not (is_user_admin(user) or is_user_moderator(user)):
+        
+        return JsonResponse({"error":"Your are not authorized to perform this action"})
+    
+    order = orders_col.find_one({"_id":ObjectId(order_id)})
+    
+    if not order:
+        return JsonResponse({"error":"Order not Found"})
+    
+    update_fields = {}
+    
+    data = json.loads(request.body.decode('utf-8'))
+
+    shipping_address = data.get("shipping_address")
+    total_price = data.get("total_price")
+    payment_status =data.get("payment_status")
+    order_status = data.get("order_status")
+    
+    if shipping_address:
+        update_fields['shipping_address']=shipping_address
+    
+    if total_price:
+        if total_price < 0:
+            return JsonResponse({"error":"price can not be less then 0"})
+        update_fields['total_price']=total_price
+    
+    if payment_status:
+        if payment_status in ['expired','pending','complete']:
+            update_fields['payment_status']=payment_status
+        else:
+            return JsonResponse({"error":"wrong status input.it must be expired,pending or complete"})
+    
+    if order_status:
+        if order_status in ["pending" , "confirmed","shipped","delivered","cancelled"]:
+            
+            update_fields['order_status']=order_status
+        else:
+            return JsonResponse({"error":"wrong status input.it must be pending , confirmed,shipped,delivered,cancelled"})
+        
+        
+    try:
+        orders_col.update_one(
+            {"_id":ObjectId(order_id)},
+            {"$set":update_fields}
+        )
+        #logging
+        order_updation_log(order,user)
+        return JsonResponse({"message":"order updated successfully"})
+    except Exception as e:
+        return JsonResponse({"error":str(e)})
+    
+
+#delete order
+@csrf_exempt
+def delete_order(request,order_id):
+    
+    if request.method != 'DELETE':
+        
+        return JsonResponse({"error":"method is not allowed"})
+    
+    user,error = get_current_user(request)
+    
+    if error:
+        return JsonResponse({"error":error})
+    
+
+    if not (is_user_admin(user) or is_user_moderator(user)):
+        
+        return JsonResponse({"error":"Your are not authorized to perform this action"})
+    
+    
+    order = orders_col.delete_one({"_id":ObjectId(order_id)})
+    if not order:
+        return JsonResponse({"error":"order not found"})
+    
+    
+    try:
+        orders_col.delete_one({"_id":ObjectId(order_id)})
+        order_deletion_log(order,user)
+        
+        return JsonResponse({"message":"order deleted successfully"})
+    except Exception as e:
+        return JsonResponse({"error":str(e)})
+    

@@ -45,7 +45,7 @@ INSTALLED_APPS = [
     'products',
     'cart',
     'order',
-    'payments',
+    'log',
     
     #Third party apps
     'cloudinary_storage',

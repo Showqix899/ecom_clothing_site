@@ -9,6 +9,4 @@ urlpatterns = [
     path("delete/<str:log_id>/",delete_log,name="delete-log"),
     path("search/",log_search_filter,name="search-log"),
     
-    
-    
 ]

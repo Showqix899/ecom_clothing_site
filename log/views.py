@@ -16,40 +16,65 @@ log_col=db['logs']
 
 
 
+def serialize_any(obj):
+    if isinstance(obj, ObjectId):
+        return str(obj)
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    if isinstance(obj, list):
+        return [serialize_any(item) for item in obj]
+    if isinstance(obj, dict):
+        return {key: serialize_any(value) for key, value in obj.items()}
+    return obj
 
-#get all the log
+
 def list_logs(request):
-    
-    if request.method != 'GET':
-        return JsonResponse({"error":"method not allowed"})
-    
-    user,error = get_current_user(request)
-    
+
+    # ---------- METHOD ----------
+    if request.method != "GET":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+
+    # ---------- AUTH ----------
+    user, error = get_current_user(request)
     if error:
-        return JsonResponse({"error":error})
-    
-    if not (is_user_admin(user)):
-        return JsonResponse({"error":"You are not authorized to do this action"})
-    
-    
-    page = int(request.GET.get("page", 1))
-    limit = int(request.GET.get("limit", 10))
+        return JsonResponse({"error": error}, status=401)
 
-    logs_cursor = log_col.find().sort("timestamp", -1)
-    logs = list(logs_cursor)
+    if not is_user_admin(user):
+        return JsonResponse({"error": "Unauthorized"}, status=403)
 
-    for log in logs:
-        log["_id"] = str(log["_id"])
-        log["timestamp"] = log["timestamp"].isoformat()
+    # ---------- PAGINATION ----------
+    try:
+        page = int(request.GET.get("page", 1))
+        limit = int(request.GET.get("limit", 10))
+        if page < 1 or limit < 1:
+            raise ValueError
+    except ValueError:
+        return JsonResponse({"error": "Invalid pagination params"}, status=400)
 
-    paginator = Paginator(logs, limit)
-    page_obj = paginator.get_page(page)
+    skip = (page - 1) * limit
 
+    # ---------- COUNT ----------
+    total = log_col.count_documents({})
+
+    # ---------- FETCH ----------
+    cursor = (
+        log_col.find()
+        .sort("timestamp", -1)
+        .skip(skip)
+        .limit(limit)
+    )
+
+    logs = [serialize_any(log) for log in cursor]
+
+    total_pages = (total + limit - 1) // limit
+
+    # ---------- RESPONSE ----------
     return JsonResponse({
-        "total": paginator.count,
-        "pages": paginator.num_pages,
+        "total": total,
+        "pages": total_pages,
         "current_page": page,
-        "results": list(page_obj)
+        "limit": limit,
+        "results": logs
     })
     
     
@@ -57,14 +82,15 @@ def list_logs(request):
 #get a log details
 @csrf_exempt
 def get_log(request, log_id):
-    
-    if not (is_user_admin(user)):
-        return JsonResponse({"error":"You are not authorized to do this action"})
+
     
     user,error = get_current_user(request)
     
     if error:
         return JsonResponse({"error":error})
+    
+    if not (is_user_admin(user)):
+        return JsonResponse({"error":"You are not authorized to do this action"})
     
     
     try:
@@ -77,8 +103,8 @@ def get_log(request, log_id):
 
         return JsonResponse(log)
 
-    except Exception:
-        return JsonResponse({"error": "Invalid log ID"}, status=400)
+    except Exception as e:
+        return JsonResponse({"error": f"Invalid log ID {str(e)}"}, status=400)
 
 
 
@@ -153,47 +179,47 @@ def delete_log(request, log_id):
         return JsonResponse({"error": "Invalid log ID"}, status=400)
 
 
-
-#search and filter log
+#log filter search
 @csrf_exempt
-def search_filter(request):
-    
+def log_search_filter(request):
+
     if request.method != 'GET':
-        
-        return JsonResponse({"error":"Method is not allowed"})
-    
-    
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+
     query = {}
-    
+
     log_id = request.GET.get('log_id')
-    entity_type = request.GET.get('action_type')
+    entity_type = request.GET.get('entity_type')
     entity_id = request.GET.get('entity_id')
     actor_id = request.GET.get('actor_id')
     actor_type = request.GET.get('actor_type')
     actor_name = request.GET.get('actor_name')
-    
-    
+    action = request.GET.get('action')
+
     if log_id:
-        query['log_id']=log_id
-        
-    if entity_id:
-        query['entity_id']=entity_id
-    
+        query["_id"] = ObjectId(log_id)   # IMPORTANT
     if entity_type:
-        query['entity_type']=entity_type
-        
+        query["entity_type"] = entity_type
+    if entity_id:
+        query["entity_id"] = entity_id
     if actor_id:
-        query['actor_id']=actor_id
-        
+        query["actor_id"] = actor_id
     if actor_type:
-        query['actor_type']= actor_type
-    
+        query["actor_type"] = actor_type
     if actor_name:
-        query['actor_name']=actor_name
-        
+        query["actor_name"] = actor_name
+    
+    if action:
+        query['action'] = action
+
     try:
-        result = log_col.find({query})
-        return JsonResponse({"log":result})
+        cursor = log_col.find(query).sort("timestamp", -1)
+        logs = [serialize_any(log) for log in cursor]
+
+        return JsonResponse({
+            "count": len(logs),
+            "results": logs
+        })
+
     except Exception as e:
-        return JsonResponse({"error":str(e)})
-        
+        return JsonResponse({"error": str(e)}, status=500)

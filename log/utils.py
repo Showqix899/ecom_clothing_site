@@ -142,7 +142,7 @@ def product_deletion_log(product, deleted_by):
             "entity_id": str(product["_id"]),
             "entity_name": product["name"],
             "description": f"Product '{product['name']}' was deleted",
-            "metadata": {"product_details":product},
+            "metadata": {},
             "timestamp": datetime.now(timezone.utc)
         }
         log_collection.insert_one(log_entry)

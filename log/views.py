@@ -7,7 +7,7 @@ import json
 from datetime import datetime
 from config.permissions import is_user_admin,is_user_moderator
 from accounts.current_user import get_current_user
-
+from rest_framework.decorators import api_view
 
 # Create your views here.
 from config.mongo import db
@@ -27,7 +27,7 @@ def serialize_any(obj):
         return {key: serialize_any(value) for key, value in obj.items()}
     return obj
 
-
+@api_view(['GET'])
 def list_logs(request):
 
     # ---------- METHOD ----------
@@ -80,7 +80,7 @@ def list_logs(request):
     
     
 #get a log details
-@csrf_exempt
+@api_view(['GET'])
 def get_log(request, log_id):
 
     
@@ -110,7 +110,7 @@ def get_log(request, log_id):
 
 
 #update log
-@csrf_exempt
+@api_view(['PUT', 'PATCH'])
 def update_log(request, log_id):
     
     if request.method not in ['PUT', 'PATCH']:
@@ -153,7 +153,7 @@ def update_log(request, log_id):
 
 
 #delete log
-@csrf_exempt
+@api_view(['DELETE'])
 def delete_log(request, log_id):
     
     if request.method != 'DELETE':
@@ -180,7 +180,7 @@ def delete_log(request, log_id):
 
 
 #log filter search
-@csrf_exempt
+@api_view(['GET'])
 def log_search_filter(request):
 
     if request.method != 'GET':

@@ -8,13 +8,14 @@ from django.views.decorators.csrf import csrf_exempt
 from config.mongo import db
 from accounts.current_user import get_current_user
 from .utils import get_user_cart
+from rest_framework.decorators import api_view
 
 products_col = db['products']
 carts_col = db['carts']
 
 
 # ---------------- GET CART ----------------
-@csrf_exempt
+@api_view(['GET'])
 def get_cart(request):
     user, error = get_current_user(request)
     if error:
@@ -40,7 +41,7 @@ def get_cart(request):
 
 
 # ---------------- ADD TO CART ----------------
-@csrf_exempt
+@api_view(['POST'])
 def add_to_cart(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
@@ -90,7 +91,7 @@ def add_to_cart(request):
 
 
 # ---------------- UPDATE QUANTITY ----------------
-@csrf_exempt
+@api_view(['PUT'])
 def update_cart_quantity(request):
     if request.method != 'PUT':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
@@ -122,7 +123,7 @@ def update_cart_quantity(request):
 
 
 # ---------------- UPDATE VARIANT ----------------
-@csrf_exempt
+@api_view(['PUT'])
 def update_cart_variant(request):
     if request.method != 'PUT':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
@@ -156,7 +157,7 @@ def update_cart_variant(request):
 
 
 # ---------------- SELECT ITEMS ----------------
-@csrf_exempt
+@api_view(['PATCH'])
 def select_cart_items(request):
     """
     Supports:
@@ -190,7 +191,7 @@ def select_cart_items(request):
 
 
 # ---------------- REMOVE ITEM ----------------
-@csrf_exempt
+@api_view(['DELETE'])
 def remove_cart_item(request):
     if request.method != 'DELETE':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
@@ -221,7 +222,7 @@ def remove_cart_item(request):
 
 
 # ---------------- CLEAR CART ----------------
-@csrf_exempt
+@api_view(['DELETE'])
 def clear_cart(request):
     if request.method != 'DELETE':
         return JsonResponse({'error': 'Method not allowed'}, status=405)

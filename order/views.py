@@ -12,7 +12,7 @@ from config.permissions import is_user_admin,is_user_moderator
 import math
 from math import ceil
 from log.utils import order_updation_log,order_deletion_log
-
+from rest_framework.decorators import api_view
 orders_col = db['orders']
 carts_col = db['carts']
 products_col = db['products']
@@ -20,7 +20,7 @@ products_col = db['products']
 
 
 # ---------------- PLACE ORDER (SELECTED ITEMS) ----------------
-@csrf_exempt
+@api_view(['POST'])
 def place_order(request):
     user, error = get_current_user(request)
     print(f'user: {user}')
@@ -138,7 +138,7 @@ def place_order(request):
 
 
 # ---------------- CANCEL ORDER ----------------
-@csrf_exempt
+@api_view(['POST'])
 def cancel_order(request, order_id):
     user, error = get_current_user(request)
     if error:
@@ -180,7 +180,7 @@ def cancel_order(request, order_id):
 
 
 
-@csrf_exempt
+@api_view(['GET'])
 def get_all_orders(request):
     user, error = get_current_user(request)
     if error:
@@ -245,7 +245,7 @@ def get_all_orders(request):
 
 
 # search order by user, status, date range, total price range, product name
-@csrf_exempt
+@api_view(['GET'])
 def search_orders(request):
     # -------- AUTH --------
     user, error = get_current_user(request)
@@ -422,7 +422,7 @@ def search_orders(request):
     
     
 #update orders
-@csrf_exempt
+@api_view(['PUT'])
 def update_order(request,order_id):
     
     if request.method != 'PUT':
@@ -488,7 +488,7 @@ def update_order(request,order_id):
     
 
 #delete order
-@csrf_exempt
+@api_view(['DELETE'])
 def delete_order(request,order_id):
     
     if request.method != 'DELETE':

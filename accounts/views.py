@@ -14,6 +14,7 @@ from .utils import create_access_token, create_refresh_token
 from config.permissions import is_user_admin, is_user_moderator
 from math import ceil
 from log.utils import login_log,logout_log,register_log,user_update_log,user_delete_log
+from rest_framework.decorators import api_view
 
 collection = db['user']
 cart_col=db['carts']
@@ -27,7 +28,7 @@ LOCK_DURATION_MINUTES = 5
 
 
 #user registration
-@csrf_exempt
+@api_view(['POST'])
 def register(request):
 
     if request.method == 'POST':
@@ -91,7 +92,7 @@ def register(request):
 
 
 #user login
-@csrf_exempt
+@api_view(['POST'])
 def login(request):
     if request.method != "POST":
         return JsonResponse({"error": "POST method required"}, status=405)
@@ -197,7 +198,7 @@ def login(request):
 
 
 #user log out
-@csrf_exempt
+@api_view(['POST'])
 def logout(request):
     if request.method != "POST":
         return JsonResponse({"error": "POST method required"}, status=405)
@@ -257,7 +258,7 @@ def logout(request):
 
 
 #refresh token
-@csrf_exempt
+@api_view(['POST'])
 def refresh_token(request):
     if request.method != "POST":
         return JsonResponse({"error": "POST method required"}, status=405)
@@ -294,7 +295,7 @@ def refresh_token(request):
 
 
 #modarator creator
-@csrf_exempt
+@api_view(['PUT'])
 def create_modarator_or_admin(request,user_id):
     
     if request.method != "PUT":
@@ -348,7 +349,7 @@ def create_modarator_or_admin(request,user_id):
         
 
 #for testing
-@csrf_exempt
+@api_view(['GET'])
 def test_data(request):
     
     user,error = get_current_user(request)
@@ -367,7 +368,7 @@ def test_data(request):
 
 
 #normal user update
-@csrf_exempt
+@api_view(['GET', 'PUT'])
 def update_user(request):
     
     if request.method !="PUT":
@@ -421,7 +422,7 @@ def update_user(request):
 
 
 #admin user update other users
-@csrf_exempt
+@api_view(['GET', 'PUT'])
 def admin_update_user(request, user_id):
 
     # ---------- VALIDATE USER ID ----------
@@ -505,7 +506,7 @@ def admin_update_user(request, user_id):
 
 
 #user deletion by admin
-@csrf_exempt
+@api_view(['DELETE'])
 def delete_user(request,user_id):
     
     if request.method != "DELETE":
@@ -536,7 +537,7 @@ def delete_user(request,user_id):
 
 
 #admin user list all users
-@csrf_exempt
+@api_view(['GET'])
 def list_users(request):
     
     if request.method != "GET":
@@ -568,7 +569,7 @@ def list_users(request):
     return JsonResponse({"users":users})
 
 #admin user get single user details
-@csrf_exempt
+@api_view(['GET'])
 def get_user_details(request, user_id):
 
     # -------- METHOD CHECK --------
@@ -743,7 +744,7 @@ def get_user_details(request, user_id):
     
     
 #user details by user
-@csrf_exempt
+@api_view(['GET'])
 def get_normal_user_details(request):
 
     # -------- METHOD CHECK --------
@@ -915,7 +916,8 @@ def get_normal_user_details(request):
     }, status=200)
     
     
-#user search
+#admin user search users
+@api_view(['GET'])
 def search_users(request):
 
     if request.method != "GET":

@@ -18,6 +18,7 @@ from log.utils import (attribute_creation_log,attribute_delation_log
                        ,product_create_log,product_deletion_log,
                        product_update_log)
 import cloudinary.uploader
+from rest_framework.decorators import api_view
 
 products_col = db["products"] #product collection
 colors_col = db["colors"] #colors collection
@@ -26,7 +27,7 @@ categories_col = db["categories"] #categories collection
 
 
 #add color
-@csrf_exempt
+@api_view(['POST'])
 def add_color(request):
     
     #getting current user
@@ -66,7 +67,7 @@ def add_color(request):
     
 
 #delete color
-@csrf_exempt
+@api_view(['DELETE'])
 def delete_color(request, color_id):
     
     #getting current user
@@ -95,7 +96,7 @@ def delete_color(request, color_id):
 
 
 #add size
-@csrf_exempt
+@api_view(['POST'])
 def add_size(request):
     
     #getting current user
@@ -137,7 +138,7 @@ def add_size(request):
     
     
 #delete size
-@csrf_exempt
+@api_view(['DELETE'])
 def delete_size(request, size_id):
     
     #getting current user
@@ -164,7 +165,7 @@ def delete_size(request, size_id):
     
     
 #add category
-@csrf_exempt
+@api_view(['POST'])
 def add_category(request):
     #getting current user
     user,error = get_current_user(request)
@@ -202,7 +203,7 @@ def add_category(request):
 
 
 #delete category
-@csrf_exempt
+@api_view(['DELETE'])
 def delete_category(request, category_id):
     #getting current user
     user,error = get_current_user(request)
@@ -227,7 +228,7 @@ def delete_category(request, category_id):
     
     
 #get all the colors , size and categories
-@csrf_exempt
+@api_view(['GET'])
 def get_attributes(request):
     
     if request.method == 'GET':
@@ -252,7 +253,7 @@ def get_attributes(request):
     
 # ---------------- Product Views -------------------- #
 #product create views for admin
-@csrf_exempt
+@api_view(['POST'])
 def create_product(request):
 
     try:
@@ -323,7 +324,7 @@ def create_product(request):
 
 
 #get product details
-@csrf_exempt
+@api_view(['GET'])
 def get_product_details(request, product_id):
     
     try:
@@ -348,7 +349,7 @@ def get_product_details(request, product_id):
 
 
 #product update view for admin
-@csrf_exempt
+@api_view(['GET', 'PUT'])
 def update_product(request, product_id):
     try:
         user, error = get_current_user(request)
@@ -475,7 +476,7 @@ def update_product(request, product_id):
 
 
 #delete product
-@csrf_exempt
+@api_view(['DELETE'])
 def delete_product(request, product_id):
     try:
         user, error = get_current_user(request)
@@ -502,7 +503,7 @@ def delete_product(request, product_id):
     
     
 #get all the prducts
-@csrf_exempt
+@api_view(['GET'])
 def get_all_products(request):
     try:
         if request.method == 'GET':
@@ -526,7 +527,7 @@ def get_all_products(request):
 
 #update product images add or remove
 
-@csrf_exempt
+@api_view(['PUT', 'PATCH'])
 def update_product_images(request, product_id):
     try:
         # -------- METHOD CHECK --------

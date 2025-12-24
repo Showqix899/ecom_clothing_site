@@ -20,41 +20,31 @@ products_col = db['products']
 
 
 # ---------------- PLACE ORDER (SELECTED ITEMS) ----------------
+
 @api_view(['POST'])
 def place_order(request):
+    # -------- AUTH --------
     user, error = get_current_user(request)
-    print(f'user: {user}')
     if error:
         return JsonResponse({'error': error}, status=401)
 
-    if request.method != 'POST':
-        return JsonResponse({'error': 'Method not allowed'}, status=405)
-
-    
+    # -------- PARSE BODY --------
     try:
-        
         body = json.loads(request.body)
-        shipping_address = body.get('shippingAddress')
-
     except json.JSONDecodeError:
-        shipping_address = None
-        pass
-   
-    if not shipping_address:
-        shipping_address = user.get('address')
-    
-    transection_id = body.get('transection_id')
-    
-    #check if the transection id is valid or not
-    
-    # if len(transection_id)< 10 or len(transection_id)>10:
-    #     return JsonResponse({"error":"not a valid transection id"})
-    
-    if not transection_id:
-        return JsonResponse({"error":"must require a valid transection id"})
+        body = {}
 
+    shipping_address = body.get('shippingAddress') or user.get('address')
+    transection_id = body.get('transection_id')
+
+    if not transection_id:
+        return JsonResponse(
+            {"error": "Transaction ID is required"},
+            status=400
+        )
+
+    # -------- GET CART --------
     cart = get_user_cart(user['_id'])
-    print(f'cart: {cart}')
     if not cart:
         return JsonResponse({'error': 'Cart not found'}, status=400)
 
@@ -64,36 +54,68 @@ def place_order(request):
     ]
 
     if not selected_items:
-        
-        return JsonResponse({'error': 'No items selected'}, status=400)
+        return JsonResponse(
+            {'error': 'No items selected'},
+            status=400
+        )
 
     order_items = []
     total_price = 0
-    
-    
+    updated_products = []  # for rollback if needed
 
-    # -------- STOCK CHECK --------
+    # -------- ATOMIC STOCK UPDATE --------
     for item in selected_items:
-        product = products_col.find_one({'_id': item['product_id']})
+        quantity = item['quantity']
 
-        if not product or product['stock'] < item['quantity']:
-            return JsonResponse({
-                'error': f"Too late! {product['name']} is out of stock"
-            }, status=400)
+        update_result = products_col.find_one_and_update(
+            {
+                '_id': item['product_id'],
+                'stock': {'$gte': quantity}
+            },
+            {
+                '$inc': {
+                    'stock': -quantity,
+                    'sold_count': quantity
+                }
+            },
+            return_document=True
+        )
 
-        subtotal = item['price_at_add'] * item['quantity']
+        if not update_result:
+            # -------- ROLLBACK PREVIOUS UPDATES --------
+            for p in updated_products:
+                products_col.update_one(
+                    {'_id': p['product_id']},
+                    {
+                        '$inc': {
+                            'stock': p['quantity'],
+                            'sold_count': -p['quantity']
+                        }
+                    }
+                )
+
+            return JsonResponse(
+                {'error': 'Too late! One or more products are out of stock'},
+                status=400
+            )
+
+        subtotal = item['price_at_add'] * quantity
+        total_price += subtotal
 
         order_items.append({
-            'product_id': product['_id'],
-            'name': product['name'],
+            'product_id': update_result['_id'],
+            'name': update_result['name'],
             'color_id': item['color_id'],
             'size_id': item['size_id'],
-            'quantity': item['quantity'],
+            'quantity': quantity,
             'unit_price': item['price_at_add'],
             'subtotal': subtotal
         })
 
-        total_price += subtotal
+        updated_products.append({
+            'product_id': update_result['_id'],
+            'quantity': quantity
+        })
 
     # -------- CREATE ORDER --------
     order = {
@@ -101,41 +123,53 @@ def place_order(request):
         'items': order_items,
         'shipping_address': shipping_address,
         'total_price': total_price,
-        'payment_status': 'pending',
+        'payment_status': 'paid',
         'order_status': 'pending',
-        "transection_id":transection_id,
+        'transection_id': transection_id,
         'created_at': datetime.now(timezone.utc),
         'updated_at': None
     }
 
-    result = orders_col.insert_one(order)
-
-    # -------- UPDATE PRODUCT STOCK --------
-    for item in order_items:
-        products_col.update_one(
-            {'_id': item['product_id']},
-            {'$inc': {
-                'stock': -item['quantity'],
-                'sold_count': item['quantity']
-            }}
+    try:
+        result = orders_col.insert_one(order)
+    except Exception:
+        # -------- ROLLBACK STOCK IF ORDER FAILS --------
+        for p in updated_products:
+            products_col.update_one(
+                {'_id': p['product_id']},
+                {
+                    '$inc': {
+                        'stock': p['quantity'],
+                        'sold_count': -p['quantity']
+                    }
+                }
+            )
+        return JsonResponse(
+            {'error': 'Order creation failed'},
+            status=500
         )
 
-    # -------- REMOVE ORDERED ITEMS FROM CART --------
-    cart['items'] = [
-        item for item in cart['items']
-        if not item.get('is_selected')
-    ]
-
+    # -------- REMOVE ITEMS FROM CART --------
     carts_col.update_one(
         {'_id': cart['_id']},
-        {'$set': {'items': cart['items'], 'updated_at': datetime.now(timezone.utc)}}
+        {
+            '$set': {
+                'items': [
+                    item for item in cart['items']
+                    if not item.get('is_selected')
+                ],
+                'updated_at': datetime.now(timezone.utc)
+            }
+        }
     )
 
-    return JsonResponse({
-        'message': 'Order placed successfully',
-        'order_id': str(result.inserted_id)
-    }, status=201)
-
+    return JsonResponse(
+        {
+            'message': 'Order placed successfully',
+            'order_id': str(result.inserted_id)
+        },
+        status=201
+    )
 
 # ---------------- CANCEL ORDER ----------------
 @api_view(['POST'])

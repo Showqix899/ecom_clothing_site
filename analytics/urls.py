@@ -10,15 +10,15 @@ from .views import (
     analytics_revenue_summary,
 
     # ----- PRODUCT ANALYTICS -----
-    analytics_product_revenue,
     analytics_product_sold_count,
-
-    # ----- CATEGORY ANALYTICS -----
-    analytics_category_revenue,
-
-    # ----- EXPIRED ORDERS -----
-    analytics_expired_orders,
-    analytics_expired_order_items,
+    product_analytics_revenue_dashboard,
+    
+    
+    # ----- DASHBOARD ANALYTICS -----
+    analytics_dashboard,
+    analytics_time_based,
+    
+    
 )
 
 urlpatterns = [
@@ -63,13 +63,7 @@ urlpatterns = [
 
     # ================== PRODUCT ANALYTICS ==================
 
-    # Product-wise revenue
-    path(
-        'products/revenue/',
-        analytics_product_revenue,
-        name='analytics-product-revenue'
-    ),
-
+   
     # Product-wise sold count
     path(
         'products/sold-count/',
@@ -78,29 +72,32 @@ urlpatterns = [
     ),
 
 
-    # ================== CATEGORY ANALYTICS ==================
 
-    # Category-wise revenue
+    
+
+   
+    
+    
+    # ================== DASHBOARD ANALYTICS ==================
     path(
-        'categories/revenue/',
-        analytics_category_revenue,
-        name='analytics-category-revenue'
+        'dashboard/',
+        analytics_dashboard,
+        name='analytics-dashboard'
     ),
-
-
-    # ================== EXPIRED ORDER ANALYTICS ==================
-
-    # Expired orders
+    
+    # ==================== TIME-BASED ANALYTICS ====================
     path(
-        'orders/expired/',
-        analytics_expired_orders,
-        name='analytics-expired-orders'
+        'time-based/',
+        analytics_time_based,
+        name='analytics-time-based'
     ),
-
-    # Expired order items
+    
+    
+    # ==================== PRODUCT REVENUE DASHBOARD ====================
     path(
-        'orders/expired/items/',
-        analytics_expired_order_items,
-        name='analytics-expired-order-items'
+        'products/revenue-dashboard/',
+        product_analytics_revenue_dashboard,
+        name='product-analytics-revenue-dashboard'
     ),
+    
 ]

@@ -147,12 +147,33 @@ def analytics_revenue_summary(request):
 
 # ==================== PRODUCT REVENUE ====================
 @api_view(['GET'])
-def analytics_product_revenue(request):
+def product_analytics_revenue_dashboard(request):
     user, err = admin_auth(request)
     if err:
         return err
 
-    data = list(orders_col.aggregate([
+    # ---------- TOTAL REVENUE ----------
+    total_revenue_data = list(orders_col.aggregate([
+        {'$match': {'payment_status': 'paid'}},
+        {'$group': {'_id': None, 'total_revenue': {'$sum': '$total_price'}}}
+    ]))
+
+    total_revenue = (
+        total_revenue_data[0]['total_revenue']
+        if total_revenue_data else 0
+    )
+
+    # ---------- REVENUE SUMMARY ----------
+    revenue_summary = list(orders_col.aggregate([
+        {'$group': {
+            '_id': '$payment_status',
+            'revenue': {'$sum': '$total_price'},
+            'orders': {'$sum': 1}
+        }}
+    ]))
+
+    # ---------- PRODUCT REVENUE ----------
+    product_revenue = list(orders_col.aggregate([
         {'$match': {'payment_status': 'paid'}},
         {'$unwind': '$items'},
         {'$group': {
@@ -164,19 +185,8 @@ def analytics_product_revenue(request):
         {'$sort': {'revenue': -1}}
     ]))
 
-    return JsonResponse({
-        'product_revenue': serialize_mongo(data)
-    })
-
-
-# ==================== CATEGORY REVENUE ====================
-@api_view(['GET'])
-def analytics_category_revenue(request):
-    user, err = admin_auth(request)
-    if err:
-        return err
-
-    data = list(orders_col.aggregate([
+    # ---------- CATEGORY REVENUE ----------
+    category_revenue = list(orders_col.aggregate([
         {'$match': {'payment_status': 'paid'}},
         {'$unwind': '$items'},
         {'$lookup': {
@@ -193,11 +203,25 @@ def analytics_category_revenue(request):
         {'$sort': {'revenue': -1}}
     ]))
 
+    # ---------- PRODUCT SOLD COUNT ----------
+    product_sold_count = list(orders_col.aggregate([
+        {'$match': {'payment_status': 'paid'}},
+        {'$unwind': '$items'},
+        {'$group': {
+            '_id': '$items.product_id',
+            'product_name': {'$first': '$items.name'},
+            'sold_count': {'$sum': '$items.quantity'}
+        }},
+        {'$sort': {'sold_count': -1}}
+    ]))
+
     return JsonResponse({
-        'category_revenue': serialize_mongo(data)
+        'total_revenue': total_revenue,
+        'revenue_summary': serialize_mongo(revenue_summary),
+        'product_revenue': serialize_mongo(product_revenue),
+        'category_revenue': serialize_mongo(category_revenue),
+        'product_sold_count': serialize_mongo(product_sold_count),
     })
-
-
 # ==================== PRODUCT SOLD COUNT ====================
 @api_view(['GET'])
 def analytics_product_sold_count(request):
@@ -221,55 +245,184 @@ def analytics_product_sold_count(request):
     })
 
 
-# ==================== EXPIRED ORDERS ====================
+
+
+
+## ==================== order DASHBOARD ANALYTICS ====================
 @api_view(['GET'])
-def analytics_expired_orders(request):
+def analytics_dashboard(request):
     user, err = admin_auth(request)
     if err:
         return err
 
-    expiry_minutes = int(request.GET.get('minutes', 30))
-    expiry_time = datetime.now(timedelta.utc) - timedelta(minutes=expiry_minutes)
+    # ---------- 1. ORDER STATUS DISTRIBUTION ----------
+    order_status_data = list(orders_col.aggregate([
+        {'$group': {'_id': '$order_status', 'count': {'$sum': 1}}}
+    ]))
 
-    data = list(orders_col.find(
-        {
-            'payment_status': 'pending',
-            'created_at': {'$lte': expiry_time}
-        },
-        {'items': 0}
-    ))
-
-    return JsonResponse({
-        'expired_orders': serialize_mongo(data)
-    })
-
-
-# ==================== EXPIRED ORDER ITEMS ====================
-@api_view(['GET'])
-def analytics_expired_order_items(request):
-    user, err = admin_auth(request)
-    if err:
-        return err
-
-    expiry_minutes = int(request.GET.get('minutes', 30))
-    expiry_time = datetime.utcnow() - timedelta(minutes=expiry_minutes)
-
-    data = list(orders_col.aggregate([
-        {'$match': {
-            'payment_status': 'pending',
-            'created_at': {'$lte': expiry_time}
+    # ---------- 2. AVERAGE ORDER VALUE ----------
+    aov_data = list(orders_col.aggregate([
+        {'$match': {'payment_status': 'paid'}},
+        {'$group': {
+            '_id': None,
+            'total': {'$sum': '$total_price'},
+            'count': {'$sum': 1}
         }},
-        {'$unwind': '$items'},
         {'$project': {
             '_id': 0,
-            'order_id': '$_id',
-            'product_id': '$items.product_id',
-            'product_name': '$items.name',
-            'quantity': '$items.quantity',
-            'subtotal': '$items.subtotal'
+            'average_order_value': {
+                '$cond': [
+                    {'$eq': ['$count', 0]},
+                    0,
+                    {'$divide': ['$total', '$count']}
+                ]
+            }
         }}
     ]))
 
+    average_order_value = (
+        aov_data[0]['average_order_value']
+        if aov_data else 0
+    )
+
+    # ---------- 3. TOTAL REVENUE ----------
+    total_revenue_data = list(orders_col.aggregate([
+        {'$match': {'payment_status': 'paid'}},
+        {'$group': {'_id': None, 'total_revenue': {'$sum': '$total_price'}}}
+    ]))
+
+    total_revenue = (
+        total_revenue_data[0]['total_revenue']
+        if total_revenue_data else 0
+    )
+
+    # ---------- 4. REVENUE SUMMARY ----------
+    revenue_summary_data = list(orders_col.aggregate([
+        {'$group': {
+            '_id': '$payment_status',
+            'revenue': {'$sum': '$total_price'}
+        }}
+    ]))
+
+    # ---------- FINAL RESPONSE ----------
     return JsonResponse({
-        'expired_order_items': serialize_mongo(data)
+        'order_status_distribution': serialize_mongo(order_status_data),
+        'average_order_value': average_order_value,
+        'total_revenue': total_revenue,
+        'revenue_summary': serialize_mongo(revenue_summary_data),
+    })
+    
+
+# ==================== TIME-BASED ANALYTICS ==================== 
+@api_view(['GET'])
+def analytics_time_based(request):
+    user, err = admin_auth(request)
+    if err:
+        return err
+
+    analytics_type = request.GET.get('type', 'daily')
+    start = request.GET.get('start_date')
+    end = request.GET.get('end_date')
+
+    match_stage = {}
+    if start and end:
+        match_stage['created_at'] = {
+            '$gte': datetime.fromisoformat(start),
+            '$lte': datetime.fromisoformat(end)
+        }
+
+    # -------- GROUP FORMAT --------
+    if analytics_type == 'daily':
+        date_group = {
+            'year': {'$year': '$created_at'},
+            'month': {'$month': '$created_at'},
+            'day': {'$dayOfMonth': '$created_at'}
+        }
+    elif analytics_type == 'weekly':
+        date_group = {
+            'year': {'$year': '$created_at'},
+            'week': {'$week': '$created_at'}
+        }
+    elif analytics_type == 'monthly':
+        date_group = {
+            'year': {'$year': '$created_at'},
+            'month': {'$month': '$created_at'}
+        }
+    elif analytics_type == 'yearly':
+        date_group = {
+            'year': {'$year': '$created_at'}
+        }
+    else:
+        return JsonResponse({'error': 'Invalid type'}, status=400)
+
+    pipeline = [
+        {'$match': match_stage},
+        {'$group': {
+            '_id': date_group,
+            'total_orders': {'$sum': 1},
+            'total_revenue': {
+                '$sum': {
+                    '$cond': [
+                        {'$eq': ['$payment_status', 'paid']},
+                        '$total_price',
+                        0
+                    ]
+                }
+            }
+        }},
+        {'$project': {
+            '_id': 0,
+            'time': '$_id',
+            'total_orders': 1,
+            'total_revenue': 1,
+            'average_order_value': {
+                '$cond': [
+                    {'$eq': ['$total_orders', 0]},
+                    0,
+                    {'$divide': ['$total_revenue', '$total_orders']}
+                ]
+            }
+        }},
+        {'$sort': {'time.year': 1, 'time.month': 1, 'time.day': 1}}
+    ]
+
+    time_data = list(orders_col.aggregate(pipeline))
+
+    # -------- ORDER STATUS SUMMARY --------
+    status_pipeline = [
+        {'$match': match_stage},
+        {'$group': {
+            '_id': '$payment_status',
+            'count': {'$sum': 1},
+            'revenue': {'$sum': '$total_price'}
+        }}
+    ]
+
+    status_data = list(orders_col.aggregate(status_pipeline))
+
+    # -------- OVERALL SUMMARY --------
+    summary_pipeline = [
+        {'$match': match_stage},
+        {'$group': {
+            '_id': None,
+            'total_orders': {'$sum': 1},
+            'total_revenue': {
+                '$sum': {
+                    '$cond': [
+                        {'$eq': ['$payment_status', 'paid']},
+                        '$total_price',
+                        0
+                    ]
+                }
+            }
+        }}
+    ]
+
+    summary = list(orders_col.aggregate(summary_pipeline))
+
+    return JsonResponse({
+        'type': analytics_type,
+        'time_based_data': serialize_mongo(time_data),
+        'order_status_summary': serialize_mongo(status_data),
+        'summary': serialize_mongo(summary[0] if summary else {})
     })

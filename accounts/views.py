@@ -54,6 +54,10 @@ def register(request):
             return JsonResponse({"error":"password is too short"})
 
         existing = collection.find_one({"username":username})
+        existing_email = collection.find_one({"email":email})
+        
+        if existing_email:
+            return JsonResponse({"error": "email already exists"},status=400)
 
         if existing:
             return JsonResponse({"error": "username already exists"},status=400)

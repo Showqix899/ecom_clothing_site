@@ -66,6 +66,16 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
+
+# CORS settings for development
+CORS_ALLOW_ALL_ORIGINS = True
+# CORS settings for production
+# CORS_ALLOWED_ORIGINS = [
+#     "http://localhost:3000",
+#     "http://127.0.0.1:3000",
+#     "https://yourfrontend.com",
+# ]
+
 ROOT_URLCONF = 'config.urls'
 
 TEMPLATES = [

@@ -36,5 +36,8 @@ urlpatterns = [
     
     #update product images
     path('update-product-images/<str:product_id>/', views.update_product_images, name='update_product_images'),
+    
+    #export products to csv
+    path('export-csv/', views.export_products_csv, name='export_products_csv'),
 
 ]

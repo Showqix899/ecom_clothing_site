@@ -1,6 +1,7 @@
 from django.urls import path
 from .views import (place_order ,cancel_order,get_all_orders,
-                    search_orders,update_order,delete_order
+                    search_orders,update_order,delete_order,
+                    export_orders_csv,
                     )
 
 urlpatterns = [
@@ -11,5 +12,6 @@ urlpatterns = [
     path('search/', search_orders, name='search_orders'),
     path('update-order/<str:order_id>/',update_order,name='update-order'),
     path('delete-order/<str:order_id>/',delete_order,name = "delete-order"),
+    path('export-csv/', export_orders_csv, name='export_orders_csv'),
     
 ]

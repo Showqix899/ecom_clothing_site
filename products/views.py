@@ -19,6 +19,8 @@ from log.utils import (attribute_creation_log,attribute_delation_log
                        product_update_log)
 import cloudinary.uploader
 from rest_framework.decorators import api_view
+import csv
+from django.http import HttpResponse
 
 products_col = db["products"] #product collection
 colors_col = db["colors"] #colors collection
@@ -619,3 +621,42 @@ def update_product_images(request, product_id):
         
         
         
+# export product data as csv
+@api_view(['GET'])
+def export_products_csv(request):
+    
+    try:
+        if request.method == 'GET':
+            products = list(products_col.find({}))
+
+            # Create the HttpResponse object with CSV header
+            response = HttpResponse(content_type='text/csv')
+            response['Content-Disposition'] = 'attachment; filename="products.csv"'
+
+            writer = csv.writer(response)
+            # Write CSV header
+            writer.writerow(['Product ID', 'Name', 'Description', 'Price', 'Category ID',
+                             'Color IDs', 'Size IDs', 'Image URLs', 'Stock',
+                             'Sold Count', 'Created By', 'Created At', 'Updated At'])
+
+            for product in products:
+                writer.writerow([
+                    str(product['_id']),
+                    product.get('name', ''),
+                    product.get('description', ''),
+                    product.get('price', 0),
+                    str(product.get('category_id')) if product.get('category_id') else '',
+                    ','.join([str(cid) for cid in product.get('color_ids', [])]),
+                    ','.join([str(sid) for sid in product.get('size_ids', [])]),
+                    ','.join(product.get('image_urls', [])),
+                    product.get('stock', 0),
+                    product.get('sold_count', 0),
+                    product.get('created_by', ''),
+                    product['created_at'].isoformat() if product.get('created_at') else '',
+                    product['updated_at'].isoformat() if product.get('updated_at') else ''
+                ])
+
+            return response
+
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)

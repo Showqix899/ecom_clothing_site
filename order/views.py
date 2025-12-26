@@ -13,6 +13,10 @@ import math
 from math import ceil
 from log.utils import order_updation_log,order_deletion_log
 from rest_framework.decorators import api_view
+import csv
+from django.http import HttpResponse
+
+# MongoDB collections
 orders_col = db['orders']
 carts_col = db['carts']
 products_col = db['products']
@@ -552,4 +556,58 @@ def delete_order(request,order_id):
         return JsonResponse({"message":"order deleted successfully"})
     except Exception as e:
         return JsonResponse({"error":str(e)})
+
+
+
+
+
+
+# ---------------- GET ALL ORDERS (ADMIN/MODERATOR) and Export as CSV----------------
+
+@api_view(['GET'])
+def export_orders_csv(request):
     
+    user, error = get_current_user(request)
+    if error:
+        return JsonResponse({'error': error}, status=401)
+
+    if not (is_user_admin(user) or is_user_moderator(user)):
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    if request.method != 'GET':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    
+
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = 'attachment; filename="orders.csv"'
+
+    writer = csv.writer(response)
+    writer.writerow([
+        'Order ID', 'User ID', 'Items', 'Shipping Address',
+        'Total Price', 'Payment Status', 'Order Status',
+        'Transaction ID', 'Created At', 'Updated At'
+    ])
+
+    orders_cursor = orders_col.find().sort('_id', -1)
+
+    for order in orders_cursor:
+        items_str = "; ".join([
+            f"{item['name']} (Qty: {item['quantity']}, Unit Price: {item['unit_price']})"
+            for item in order.get('items', [])
+        ])
+
+        writer.writerow([
+            str(order['_id']),
+            str(order['user_id']),
+            items_str,
+            order.get('shipping_address', ''),
+            order.get('total_price', 0),
+            order.get('payment_status', ''),
+            order.get('order_status', ''),
+            order.get('transection_id', ''),
+            order.get('created_at', '').strftime('%Y-%m-%d %H:%M:%S') if order.get('created_at') else '',
+            order.get('updated_at', '').strftime('%Y-%m-%d %H:%M:%S') if order.get('updated_at') else ''
+        ])
+
+    return response

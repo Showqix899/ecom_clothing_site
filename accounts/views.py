@@ -35,15 +35,22 @@ def register(request):
 
         body = json.loads(request.body)
 
-        username = body.get("username")
+        first_name = body.get("first_name")
+        last_name = body.get("last_name")
         password = body.get("password")
         email = body.get('email')
         address=body.get('address')
         phone= body.get('phone')
 
-        if username == None:
+        if first_name == None:
 
             return JsonResponse({"error":"Please enter a username"})
+        
+        if last_name == None:
+            return JsonResponse({"error":"Please enter a username"})
+        
+        if email == None:
+            return JsonResponse({"error":"please enter an email."})
         
         if password == None:
 
@@ -53,22 +60,18 @@ def register(request):
 
             return JsonResponse({"error":"password is too short"})
 
-        existing = collection.find_one({"username":username})
         existing_email = collection.find_one({"email":email})
         
         if existing_email:
             return JsonResponse({"error": "email already exists"},status=400)
-
-        if existing:
-            return JsonResponse({"error": "username already exists"},status=400)
-        
 
         hash_pass = hash_password(password)
 
 
         try:
             result =collection.insert_one({
-            "username":username,
+            "first_name":first_name,
+            "last_name":last_name,
             'email':email,
             "password":hash_pass,
             "logged_in":False,
@@ -103,16 +106,16 @@ def login(request):
 
     try:
         body = json.loads(request.body or "{}")
-        username = body.get("username")
+        email = body.get("email")
         password = body.get("password")
 
-        if not username or not password:
+        if not email or not password:
             return JsonResponse(
-                {"error": "username and password are required"},
+                {"error": "email and password are required"},
                 status=400
             )
 
-        user = collection.find_one({"username": username})
+        user = collection.find_one({"email": email})
         if not user:
             return JsonResponse({"error": "Invalid credentials"}, status=401)
 
@@ -173,7 +176,8 @@ def login(request):
 
         safe_user = {
             "_id": str(user["_id"]),
-            "username": user["username"],
+            "first_name": user["first_name"],
+            "last_name": user["last_name"],
             "email": user.get("email"),
             "role": user["role"]
         }
@@ -398,12 +402,17 @@ def update_user(request):
         return JsonResponse({"error":error},status=401)
     
     body = json.loads(request.body)
-    username = body.get('username')
+    first_name = body.get('first_name')
+    last_name = body.get('last_name')
     address= body.get('address')
     phone = body.get('phone')
     email = body.get('email')
     
     update_fields = {}
+    if first_name:
+        update_fields['first_name']= first_name
+    if last_name:
+        update_fields['last_name']= last_name
     if address:
         update_fields['address']= address
     if phone:
@@ -473,7 +482,7 @@ def admin_update_user(request, user_id):
         return JsonResponse({"error": "Invalid JSON body"}, status=400)
 
     # ---------- ALLOWED FIELDS ----------
-    allowed_fields = ["username", "address", "phone", "email", "role"]
+    allowed_fields = ["first_name","last_name", "address", "phone", "email", "role"]
     update_fields = {
         field: body[field]
         for field in allowed_fields
@@ -945,9 +954,12 @@ def search_users(request):
             return JsonResponse({"error": "Invalid user_id"}, status=400)
 
     # ---------- SEARCH BY USERNAME ----------
-    username = request.GET.get("username")
-    if username:
-        query["username"] = {"$regex": username, "$options": "i"}
+    first_name = request.GET.get("first_name")
+    if first_name:
+        query["first_name"] = {"$regex": first_name, "$options": "i"}
+    last_name = request.GET.get("last_name")
+    if last_name:
+        query["last_name"] = {"$regex": last_name, "$options": "i"}
 
     # ---------- SEARCH BY EMAIL ----------
     email = request.GET.get("email")
@@ -963,7 +975,7 @@ def search_users(request):
     sort_by = request.GET.get("sort_by", "created_at")
     order = request.GET.get("order", "desc")
 
-    allowed_sort_fields = ["created_at", "username", "email", "role"]
+    allowed_sort_fields = ["created_at", "first_name","last_name", "email", "role"]
     if sort_by not in allowed_sort_fields:
         return JsonResponse({"error": "Invalid sort field"}, status=400)
 

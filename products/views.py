@@ -181,10 +181,14 @@ def add_category(request):
     
     
     if request.method == 'POST':
-        body = json.loads(request.body)
-        category_name = body.get('category_name')
+        
+        category_name = request.POST.get('category_name')
+        catg_img = request.FILES.get('category_image')
+        
         if not category_name:
             return JsonResponse({'error': 'Category name is required.'}, status=400)
+        
+        
         
         # Check if category already exists
         existing_category = categories_col.find_one({'name': category_name})
@@ -193,6 +197,10 @@ def add_category(request):
         
         # Insert new category
         category_data = {'name': category_name.lower()}
+        if catg_img:
+            upload = cloudinary.uploader.upload(catg_img)
+            category_data['image_url'] = upload['secure_url']
+        
         result = categories_col.insert_one(category_data)
         
         #logging

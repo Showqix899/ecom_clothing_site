@@ -284,7 +284,21 @@ def refresh_token(request):
         if payload["type"] != "refresh":
             return JsonResponse({"error": "Invalid token"}, status=401)
 
+        
         user = collection.find_one({"_id": ObjectId(payload["sub"])})
+        
+        user['_id'] = str(user['_id'])
+        
+        #safe user data
+        safe_user = {
+            "_id": user["_id"],
+            "first_name": user["first_name"],
+            "last_name": user["last_name"],
+            "email": user.get("email"),
+            "role": user["role"]
+        }
+        
+        
         
         if user['logged_in'] == False:
             return JsonResponse({"error": "User is logged out"}, status=401)
@@ -294,7 +308,7 @@ def refresh_token(request):
 
         access_token = create_access_token(user["_id"], user["role"])
 
-        return JsonResponse({"access_token": access_token})
+        return JsonResponse({"access_token": access_token,"user":safe_user})
 
     except jwt.ExpiredSignatureError:
         return JsonResponse({"error": "Refresh token expired"}, status=401)

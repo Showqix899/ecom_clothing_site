@@ -244,7 +244,7 @@ def get_attributes(request):
     if request.method == 'GET':
         colors = list(colors_col.find({}, {'_id': 1, 'name': 1}))
         sizes = list(sizes_col.find({}, {'_id': 1, 'name': 1}))
-        categories = list(categories_col.find({}, {'_id': 1, 'name': 1}))
+        categories = list(categories_col.find({}))
 
         # Convert ObjectId to string for JSON serialization
         for color in colors:

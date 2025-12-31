@@ -31,7 +31,7 @@ urlpatterns = [
     path('delete-product/<str:product_id>/', views.delete_product, name='delete_product'),
     
     #get all products
-    path('all-products/', views.get_all_products, name='all_products'),
+    path('all-products/', views.get_products, name='all_products'),
     
     
     #update product images

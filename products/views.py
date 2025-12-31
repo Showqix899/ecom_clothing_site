@@ -510,24 +510,47 @@ def delete_product(request, product_id):
 
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
-    
-    
+
+
+import math
 #get all the prducts
 @api_view(['GET'])
-def get_all_products(request):
+def get_products(request):
     try:
-        if request.method == 'GET':
-            products = list(products_col.find({}))
+        # -------- PAGINATION PARAMS --------
+        page = int(request.GET.get('page', 1))
+        limit = int(request.GET.get('limit', 10))
+        skip = (page - 1) * limit
 
-            for product in products:
-                product['_id'] = str(product['_id'])
-                product['category_id'] = str(product.get('category_id'))
-                product['color_ids'] = [str(cid) for cid in product.get('color_ids', [])]
-                product['size_ids'] = [str(sid) for sid in product.get('size_ids', [])]
-                product['created_at'] = product['created_at'].isoformat()
-                product['updated_at'] = product.get('updated_at')
+        # -------- QUERY (LATEST FIRST) --------
+        cursor = (
+            products_col
+            .find()
+            .sort('created_at', -1)   # DESC order (latest first)
+            .skip(skip)
+            .limit(limit)
+        )
 
-            return JsonResponse({'products': products}, status=200)
+        products = list(cursor)
+        total_products = products_col.count_documents({})
+        total_pages = math.ceil(total_products / limit)
+
+        # -------- SERIALIZATION --------
+        for product in products:
+            product['_id'] = str(product['_id'])
+            product['category_id'] = str(product['category_id']) if product.get('category_id') else None
+            product['color_ids'] = [str(cid) for cid in product.get('color_ids', [])]
+            product['size_ids'] = [str(sid) for sid in product.get('size_ids', [])]
+            product['created_at'] = product['created_at'].isoformat() if product.get('created_at') else None
+            product['updated_at'] = product['updated_at'].isoformat() if product.get('updated_at') else None
+
+        return JsonResponse({
+            'page': page,
+            'limit': limit,
+            'total_products': total_products,
+            'total_pages': total_pages,
+            'products': products
+        }, status=200)
 
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)

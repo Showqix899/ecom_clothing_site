@@ -122,13 +122,13 @@ def serialize_banner(banner):
 @api_view(['GET'])
 def search_banner(request):
 
-    # ---------- AUTH ----------
-    user, error = get_current_user(request)
-    if error:
-        return Response({"error": error}, status=401)
+    # # ---------- AUTH ----------
+    # user, error = get_current_user(request)
+    # if error:
+    #     return Response({"error": error}, status=401)
 
-    # if not (is_user_admin(user) or is_user_moderator(user)):
-    #     return Response({"error": "Unauthorized. Admin or moderator access required."}, status=403)
+    # # if not (is_user_admin(user) or is_user_moderator(user)):
+    # #     return Response({"error": "Unauthorized. Admin or moderator access required."}, status=403)
 
     # ---------- QUERY ----------
     title = request.GET.get('title')

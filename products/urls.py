@@ -14,6 +14,15 @@ urlpatterns = [
     path('add-category/', views.add_category, name='add_category'),
     path('delete-category/<str:category_id>/', views.delete_category, name='delete_category'),
     
+    #subcategories
+    path('add-subcategory/<str:category_id>/', views.add_subcategory, name='add_subcategory'),
+    path('delete-subcategory/<str:subcategory_id>/', views.delete_subcategory, name='delete_subcategory'),
+    path('get-subcategories/<str:category_id>/', views.list_subcategories, name='get_subcategories'),
+    
+    # types
+    path('add-type/', views.create_type, name='add_type'),
+    path('delete-type/<str:type_id>/', views.delete_type, name='delete_type'),
+    
     
     #get all attributes
     path('get-attributes/', views.get_attributes, name='get_attributes'),
@@ -32,6 +41,9 @@ urlpatterns = [
     
     #get all products
     path('all-products/', views.get_products, name='all_products'),
+    
+    #search and filtering products
+    path('search-products/', views.product_list, name='search_products'),
     
     
     #update product images

@@ -26,6 +26,8 @@ products_col = db["products"] #product collection
 colors_col = db["colors"] #colors collection
 sizes_col = db["sizes"] #sizes collection
 categories_col = db["categories"] #categories collection
+type_col = db["products_type"] #product types collection
+subcategories_col = db["subcategories"] #subcategories collection
 
 
 #add color
@@ -210,6 +212,63 @@ def add_category(request):
         
         
         return JsonResponse({'message': 'Category added successfully.', 'category_id': str(result.inserted_id)}, status=201)
+    
+    
+#subcategory 
+@api_view(['POST'])
+def add_subcategory(request, category_id):
+    
+    try:
+        if not category_id:
+            return JsonResponse({'error': 'Category ID is required.'}, status=400)
+
+        body = json.loads(request.body)
+        subcategory_name = body.get('subcategory_name')
+        
+        if not subcategory_name:
+            return JsonResponse({'error': 'Subcategory name is required.'}, status=400)
+        
+        category = categories_col.find_one({'_id': ObjectId(category_id)})
+        if not category:
+            return JsonResponse({'error': 'Category not found.'}, status=404)
+        
+        # Check if subcategory already exists
+        existing_subcategory = subcategories_col.find_one({"name":subcategory_name.lower(),"parent_id":ObjectId(category_id)})
+        if existing_subcategory:
+            return JsonResponse({'error': 'Subcategory already exists.'}, status=400)   
+        
+        # Insert new subcategory
+        subcategory_data = {
+            'name': subcategory_name.lower(),
+            'parent_id': ObjectId(category_id)
+        }
+        
+        result = subcategories_col.insert_one(subcategory_data)
+        return JsonResponse({'message': 'Subcategory added successfully.', 'subcategory_id': str(result.inserted_id)}, status=201)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+    
+    
+#list of subcategories based on category id
+@api_view(['GET'])
+def list_subcategories(request, category_id):
+    
+    try:
+        if not category_id:
+            return JsonResponse({'error': 'Category ID is required.'}, status=400)
+
+        category = categories_col.find_one({'_id': ObjectId(category_id)})
+        if not category:
+            return JsonResponse({'error': 'Category not found.'}, status=404)
+        subcategories = list(subcategories_col.find({'parent_id': ObjectId(category_id)}))
+        for subcat in subcategories:
+            subcat['_id'] = str(subcat['_id'])
+            subcat['parent_id'] = str(subcat['parent_id'])
+        return JsonResponse({'subcategories': subcategories}, status=200)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+    
+    
 
 
 #delete category
@@ -234,8 +293,65 @@ def delete_category(request, category_id):
         
         attribute_delation_log(request,category,user)
         return JsonResponse({'message': 'Category deleted successfully.'}, status=200)
+
+
+#delete subcategory
+@api_view(['DELETE'])
+def delete_subcategory(request, subcategory_id):
+    #getting current user
+    user,error = get_current_user(request)
+    if error:
+        return JsonResponse({'error': error}, status=401)
     
     
+    #checking user is admin or moderator
+    if not is_user_admin(user) or is_user_moderator(user):
+        return JsonResponse({'error': 'Unauthorized. Admin  or moderator access required.'}, status=403)
+    
+    
+    if request.method == 'DELETE':
+        subcategory = subcategories_col.find_one({'_id':ObjectId(subcategory_id)})
+        result = subcategories_col.delete_one({'_id': ObjectId(subcategory_id)})
+        if result.deleted_count == 0:
+            return JsonResponse({'error': 'Subcategory not found.'}, status=404)
+        
+        attribute_delation_log(request,subcategory,user)
+        return JsonResponse({'message': 'Subcategory deleted successfully.'}, status=200)
+    
+ 
+
+
+#----------- product type views -------------------- #
+@api_view(['POSt'])
+def create_type(request):
+    
+    if request.method == 'POST':
+        
+        body = json.loads(request.body)
+        type_name = body.get('type_name')
+        if not type_name:
+            return JsonResponse({'error': 'Type name is required.'}, status=400)
+        
+        # Check if type already exists
+        existiing_type = type_col.find_one({'name': type_name}) 
+        if existiing_type:
+            return JsonResponse({'error': 'Type already exists.'}, status=400)
+        
+        # Insert new type
+        type_data = {'name': type_name.lower()}
+        result = type_col.insert_one(type_data)
+        return JsonResponse({'message': 'Type added successfully.', 'type_id': str(result.inserted_id)}, status=201)
+    
+#delete type
+@api_view(['DELETE'])
+def delete_type(request, type_id):
+    
+    if request.method == 'DELETE':
+        result = type_col.delete_one({'_id': ObjectId(type_id)})
+        if result.deleted_count == 0:
+            return JsonResponse({'error': 'Type not found.'}, status=404)
+        return JsonResponse({'message': 'Type deleted successfully.'}, status=200)
+   
     
 #get all the colors , size and categories
 @api_view(['GET'])
@@ -245,6 +361,7 @@ def get_attributes(request):
         colors = list(colors_col.find({}, {'_id': 1, 'name': 1}))
         sizes = list(sizes_col.find({}, {'_id': 1, 'name': 1}))
         categories = list(categories_col.find({}))
+        types = list(type_col.find({}))
 
         # Convert ObjectId to string for JSON serialization
         for color in colors:
@@ -253,17 +370,23 @@ def get_attributes(request):
             size['_id'] = str(size['_id'])
         for category in categories:
             category['_id'] = str(category['_id'])
-
+            
+        for type in types:
+            type['_id'] = str(type['_id'])
+        
+            
         return JsonResponse({
             'colors': colors,
             'sizes': sizes,
-            'categories': categories
+            'categories': categories,
+            'types': types
         }, status=200)
-    
+
+
     
 # ---------------- Product Views -------------------- #
 #product create views for admin
-@api_view(['POST'])
+@api_view(['POST','GET'])
 def create_product(request):
 
     try:
@@ -284,10 +407,24 @@ def create_product(request):
             price = float(request.POST.get('price', 0))
             category_id = request.POST.get('category_id')
             stock = int(request.POST.get('stock', 0))
-
             color_ids = request.POST.getlist('color_ids')
             size_ids = request.POST.getlist('size_ids')
             images = request.FILES.getlist('images')
+            gender = request.POST.get('gender', 'unisex')
+            type = request.POST.get('type_id', 'general')
+            
+            if not name or not description or price <= 0 or stock < 0:
+                return JsonResponse({'error': 'Please provide valid product details.'}, status=400)
+            
+            if not category_id:
+                return JsonResponse({'error': 'Category is required.'}, status=400)
+            
+            if not type:
+                return JsonResponse({'error': 'Type is required.'}, status=400)
+            
+            if gender not in ['male', 'female', 'unisex']:
+                return JsonResponse({'error': 'Invalid gender value.'}, status=400)
+            
 
             if not images or len(images) > 3:
                 return JsonResponse({'error': 'Please upload between 1 to 3 images.'}, status=400)
@@ -303,6 +440,8 @@ def create_product(request):
             product_data = {
                 'name': name,
                 'description': description,
+                'gender': gender,
+                'type': ObjectId(type),
                 'price': price,
                 'category_id': ObjectId(category_id) if category_id else None,
                 'color_ids': [ObjectId(cid) for cid in color_ids],
@@ -310,7 +449,7 @@ def create_product(request):
                 'image_urls': image_urls,
                 'stock': stock,
                 'sold_count': 0,
-                'created_by': user['username'],
+                'created_by': user['email'],
                 'created_at': datetime.now(timezone.utc),
                 'updated_at': None
             }
@@ -319,7 +458,6 @@ def create_product(request):
             
             product_name = product_data['name']
             product_id = str(result.inserted_id)
-            
             product_create_log(product_id,product_name,user)
 
             return JsonResponse({
@@ -691,3 +829,76 @@ def export_products_csv(request):
 
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
+    
+    
+    
+#filter and search products
+@api_view(['GET'])
+def product_list(request):
+    # -------- Query Params --------
+    search = request.GET.get("search")
+    product_type = request.GET.get("type")
+    gender = request.GET.get("gender")
+    category = request.GET.get("category")
+    min_price = request.GET.get("min_price")
+    max_price = request.GET.get("max_price")
+
+    # Pagination
+    page = int(request.GET.get("page", 1))
+    limit = int(request.GET.get("limit", 10))
+    skip = (page - 1) * limit
+
+    # -------- MongoDB Filter --------
+    query = {}
+
+    # Search by name (case-insensitive)
+    if search:
+        query["name"] = {"$regex": search, "$options": "i"}
+
+    if product_type:
+        query["type"] = ObjectId(product_type)
+
+    if gender:
+        query["gender"] = gender
+
+    if category:
+        query["category_id"] = ObjectId(category)
+
+    # Price range
+    if min_price or max_price:
+        query["price"] = {}
+        if min_price:
+            query["price"]["$gte"] = int(min_price)
+        if max_price:
+            query["price"]["$lte"] = int(max_price)
+
+    # -------- Fetch Data --------
+    total_products = products_col.count_documents(query)
+
+    products = list(
+        products_col.find(query)
+        .skip(skip)
+        .limit(limit)
+        .sort("created_at", -1)
+    )
+
+    # Convert ObjectId → string
+    for p in products:
+        p["_id"] = str(p["_id"])
+        p["category_id"] = str(p["category_id"])
+        p["color_ids"] = [str(c) for c in p.get("color_ids", [])]
+        p["size_ids"] = [str(s) for s in p.get("size_ids", [])]
+        p['type'] = str(p['type'])
+
+    # -------- Pagination Info --------
+    total_pages = math.ceil(total_products / limit)
+
+    return JsonResponse({
+        "page": page,
+        "limit": limit,
+        "total_products": total_products,
+        "total_pages": total_pages,
+        "has_next": page < total_pages,
+        "has_prev": page > 1,
+        "results": products
+    }, safe=False)

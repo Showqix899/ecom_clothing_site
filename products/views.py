@@ -921,6 +921,7 @@ def product_list(request):
         p["category_id"] = str(p["category_id"])
         p["color_ids"] = [str(c) for c in p.get("color_ids", [])]
         p["size_ids"] = [str(s) for s in p.get("size_ids", [])]
+        p['subcategory_id'] = str(p['subcategory_id'])
         p['type'] = str(p['type'])
 
     # -------- Pagination Info --------

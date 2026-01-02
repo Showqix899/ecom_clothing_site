@@ -267,6 +267,19 @@ def list_subcategories(request, category_id):
         return JsonResponse({'subcategories': subcategories}, status=200)
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
+
+@api_view(["GET"])
+def all_subcategories(request):
+    
+    try:
+        subcategories = list(subcategories_col.find({}))
+        for subcat in subcategories:
+            subcat['_id'] = str(subcat['_id'])
+            subcat['parent_id'] = str(subcat['parent_id'])
+        return JsonResponse({'subcategories': subcategories}, status=200)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+    
     
     
 
@@ -406,15 +419,25 @@ def create_product(request):
             description = request.POST.get('description')
             price = float(request.POST.get('price', 0))
             category_id = request.POST.get('category_id')
+            subcategory_id = request.POST.get('subcategory_id')
             stock = int(request.POST.get('stock', 0))
             color_ids = request.POST.getlist('color_ids')
             size_ids = request.POST.getlist('size_ids')
             images = request.FILES.getlist('images')
             gender = request.POST.get('gender', 'unisex')
-            type = request.POST.get('type_id', 'general')
+            type = request.POST.get('type_id')
             
             if not name or not description or price <= 0 or stock < 0:
                 return JsonResponse({'error': 'Please provide valid product details.'}, status=400)
+            
+            #check if the subcategory belongs to category
+            if subcategory_id:
+                if not subcategory_id:
+                    return JsonResponse({'error': 'Subcategory ID is required.'}, status=400)
+                subcategory = subcategories_col.find_one({'_id': ObjectId(subcategory_id)})
+                print(f'{subcategory} == {category_id}')
+                if str(subcategory['parent_id']) != category_id:
+                    return JsonResponse({'error': 'Subcategory does not belong to the specified category.'}, status=400)
             
             if not category_id:
                 return JsonResponse({'error': 'Category is required.'}, status=400)
@@ -444,6 +467,7 @@ def create_product(request):
                 'type': ObjectId(type),
                 'price': price,
                 'category_id': ObjectId(category_id) if category_id else None,
+                'subcategory_id': ObjectId(subcategory_id) if subcategory_id else None,
                 'color_ids': [ObjectId(cid) for cid in color_ids],
                 'size_ids': [ObjectId(sid) for sid in size_ids],
                 'image_urls': image_urls,
@@ -835,13 +859,19 @@ def export_products_csv(request):
 #filter and search products
 @api_view(['GET'])
 def product_list(request):
+    
+    
+    
     # -------- Query Params --------
     search = request.GET.get("search")
-    product_type = request.GET.get("type")
+    product_type = request.GET.get("type_id")
     gender = request.GET.get("gender")
-    category = request.GET.get("category")
+    category = request.GET.get("category_id")
     min_price = request.GET.get("min_price")
     max_price = request.GET.get("max_price")
+    sub_category = request.GET.get("subcategory_id")
+    
+    
 
     # Pagination
     page = int(request.GET.get("page", 1))
@@ -863,6 +893,9 @@ def product_list(request):
 
     if category:
         query["category_id"] = ObjectId(category)
+    
+    if sub_category:
+        query["subcategory_id"] = ObjectId(sub_category)
 
     # Price range
     if min_price or max_price:

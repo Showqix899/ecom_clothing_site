@@ -141,6 +141,8 @@ def add_size(request):
     
     
     
+    
+    
 #delete size
 @api_view(['DELETE'])
 def delete_size(request, size_id):
@@ -171,15 +173,16 @@ def delete_size(request, size_id):
 #add category
 @api_view(['POST'])
 def add_category(request):
-    #getting current user
-    user,error = get_current_user(request)
-    if error:
-        return JsonResponse({'error': error}, status=401)
+    
+    # #getting current user
+    # user,error = get_current_user(request)
+    # if error:
+    #     return JsonResponse({'error': error}, status=401)
     
     
-    #checking user is admin or moderator
-    if not is_user_admin(user) or is_user_moderator(user):
-        return JsonResponse({'error': 'Unauthorized. Admin  or moderator access required.'}, status=403)
+    # #checking user is admin or moderator
+    # if not is_user_admin(user) or is_user_moderator(user):
+    #     return JsonResponse({'error': 'Unauthorized. Admin  or moderator access required.'}, status=403)
     
     
     if request.method == 'POST':
@@ -187,10 +190,12 @@ def add_category(request):
         category_name = request.POST.get('category_name')
         catg_img = request.FILES.get('category_image')
         
+        
         if not category_name:
             return JsonResponse({'error': 'Category name is required.'}, status=400)
         
-        
+        if not catg_img:
+            return JsonResponse({'error': 'Category image is required.'}, status=400)
         
         # Check if category already exists
         existing_category = categories_col.find_one({'name': category_name})
@@ -207,7 +212,7 @@ def add_category(request):
         
         #logging
         category = categories_col.find_one({'_id':ObjectId(result.inserted_id)})
-        attribute_creation_log(request,category,user)
+        # attribute_creation_log(request,category,user)
         
         
         
@@ -222,8 +227,15 @@ def add_subcategory(request, category_id):
         if not category_id:
             return JsonResponse({'error': 'Category ID is required.'}, status=400)
 
-        body = json.loads(request.body)
-        subcategory_name = body.get('subcategory_name')
+        sub_catg_name = request.POST.get('subcategory_name').lower()
+        subcategory_name = sub_catg_name.strip()
+        sub_catg_img = request.FILES.get('subcategory_image')
+        
+        if sub_catg_img:
+            upload = cloudinary.uploader.upload(sub_catg_img)
+            image_url = upload['secure_url']
+        
+        
         
         if not subcategory_name:
             return JsonResponse({'error': 'Subcategory name is required.'}, status=400)
@@ -240,13 +252,17 @@ def add_subcategory(request, category_id):
         # Insert new subcategory
         subcategory_data = {
             'name': subcategory_name.lower(),
-            'parent_id': ObjectId(category_id)
+            'parent_id': ObjectId(category_id),
+            'image_url': image_url if sub_catg_img else None
         }
         
         result = subcategories_col.insert_one(subcategory_data)
         return JsonResponse({'message': 'Subcategory added successfully.', 'subcategory_id': str(result.inserted_id)}, status=201)
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
+    
+#attributes 
+
     
     
 #list of subcategories based on category id

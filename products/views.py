@@ -174,15 +174,16 @@ def delete_size(request, size_id):
 @api_view(['POST'])
 def add_category(request):
     
-    # #getting current user
-    # user,error = get_current_user(request)
-    # if error:
-    #     return JsonResponse({'error': error}, status=401)
+    
+    #getting current user
+    user,error = get_current_user(request)
+    if error:
+        return JsonResponse({'error': error}, status=401)
     
     
-    # #checking user is admin or moderator
-    # if not is_user_admin(user) or is_user_moderator(user):
-    #     return JsonResponse({'error': 'Unauthorized. Admin  or moderator access required.'}, status=403)
+    #checking user is admin or moderator
+    if not is_user_admin(user) or is_user_moderator(user):
+        return JsonResponse({'error': 'Unauthorized. Admin  or moderator access required.'}, status=403)
     
     
     if request.method == 'POST':
@@ -510,26 +511,31 @@ def create_product(request):
 
 
 
-
 #get product details
 @api_view(['GET'])
 def get_product_details(request, product_id):
-    
     try:
-        if request.method == 'GET':
-            product = products_col.find_one({'_id': ObjectId(product_id)})
+        product = products_col.find_one({'_id': ObjectId(product_id)})
         if not product:
             return JsonResponse({'error': 'Product not found'}, status=404)
 
-        # Convert ObjectId fields to string for JSON serialization
+        # Convert ObjectId fields to string
         product['_id'] = str(product['_id'])
+
+        # FIX: convert `type`
+        product['type'] = str(product['type']) if product.get('type') else None
+
         product['category_id'] = str(product['category_id']) if product.get('category_id') else None
+        product['subcategory_id'] = str(product['subcategory_id']) if product.get('subcategory_id') else None
+
         product['color_ids'] = [str(cid) for cid in product.get('color_ids', [])]
         product['size_ids'] = [str(sid) for sid in product.get('size_ids', [])]
+
         product['created_at'] = product['created_at'].isoformat() if product.get('created_at') else None
         product['updated_at'] = product['updated_at'].isoformat() if product.get('updated_at') else None
 
         return JsonResponse({'product': product}, status=200)
+
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 

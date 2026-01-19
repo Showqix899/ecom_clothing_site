@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'order',
     'log',
     'banner',
+    'user_traffic',
     
     #Third party apps
     'cloudinary_storage',
@@ -56,6 +57,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'user_traffic.middleware.rate_limit.RateLimitMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -64,6 +66,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'user_traffic.middleware.visit_logger.VisitLoggerMiddleware',
 ]
 
 

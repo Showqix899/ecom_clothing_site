@@ -446,21 +446,13 @@ def create_product(request):
             
             if not name or not description or price <= 0 or stock < 0:
                 return JsonResponse({'error': 'Please provide valid product details.'}, status=400)
+            if not subcategory_id:
+                return JsonResponse({'error': 'Subcategory ID is required.'}, status=400)
             
-            #check if the subcategory belongs to category
-            if subcategory_id:
-                if not subcategory_id:
-                    return JsonResponse({'error': 'Subcategory ID is required.'}, status=400)
-                subcategory = subcategories_col.find_one({'_id': ObjectId(subcategory_id)})
-                print(f'{subcategory} == {category_id}')
-                if str(subcategory['parent_id']) != category_id:
-                    return JsonResponse({'error': 'Subcategory does not belong to the specified category.'}, status=400)
             
             if not category_id:
                 return JsonResponse({'error': 'Category is required.'}, status=400)
             
-            if not type:
-                return JsonResponse({'error': 'Type is required.'}, status=400)
             
             if gender not in ['male', 'female', 'unisex']:
                 return JsonResponse({'error': 'Invalid gender value.'}, status=400)
@@ -471,6 +463,15 @@ def create_product(request):
 
             if not color_ids or not size_ids:
                 return JsonResponse({'error': 'Color and size are required'}, status=400)
+            
+            #check if the subcategory belongs to category
+            if subcategory_id:
+                if not subcategory_id:
+                    return JsonResponse({'error': 'Subcategory ID is required.'}, status=400)
+                subcategory = subcategories_col.find_one({'_id': ObjectId(subcategory_id)})
+                print(f'{subcategory} == {category_id}')
+                if str(subcategory['parent_id']) != category_id:
+                    return JsonResponse({'error': 'Subcategory does not belong to the specified category.'}, status=400)
 
             image_urls = []
             for image in images:
@@ -496,6 +497,7 @@ def create_product(request):
             }
 
             result = products_col.insert_one(product_data)
+            images = []
             
             product_name = product_data['name']
             product_id = str(result.inserted_id)

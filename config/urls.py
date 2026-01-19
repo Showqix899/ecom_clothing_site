@@ -11,4 +11,5 @@ urlpatterns = [
     path('logs/',include('log.urls')),
     path('banner/',include('banner.urls')),
     path('analytics/',include('analytics.urls')),
+    path('traffic/',include('user_traffic.urls')),
 ]

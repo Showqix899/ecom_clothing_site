@@ -191,30 +191,51 @@ def select_cart_items(request):
 
 
 # ---------------- REMOVE ITEM ----------------
+# @api_view(['DELETE'])
+# def remove_cart_item(request,item_id):
+#     if request.method != 'DELETE':
+#         return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+#     user, error = get_current_user(request)
+#     if error:
+#         return JsonResponse({'error': error}, status=401)
+
+#     data = json.loads(request.body)
+#     item_id = data['item_id']
+
+#     cart = get_user_cart(user['_id'])
+
+#     cart['items'] = [
+#         item for item in cart['items']
+#         if str(item['item_id']) != item_id
+#     ]
+
+#     carts_col.update_one(
+#         {'_id': cart['_id']},
+#         {'$set': {'items': cart['items'], 'updated_at': datetime.now(timezone.utc)}}
+#     )
+
+#     return JsonResponse({'message': 'Item removed'}, status=200)
+
 @api_view(['DELETE'])
-def remove_cart_item(request):
+def remove_cart_item(request, item_id):
+    
     if request.method != 'DELETE':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
-
+    
     user, error = get_current_user(request)
     if error:
         return JsonResponse({'error': error}, status=401)
-
-    data = json.loads(request.body)
-    item_id = data['item_id']
-
     cart = get_user_cart(user['_id'])
-
+    
     cart['items'] = [
         item for item in cart['items']
         if str(item['item_id']) != item_id
     ]
-
     carts_col.update_one(
         {'_id': cart['_id']},
         {'$set': {'items': cart['items'], 'updated_at': datetime.now(timezone.utc)}}
     )
-
     return JsonResponse({'message': 'Item removed'}, status=200)
 
 

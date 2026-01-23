@@ -622,6 +622,8 @@ def update_product(request, product_id):
                         value = int(value)
                     elif field == 'category_id':
                         value = ObjectId(value)
+                    elif field == 'subcategory_id':
+                        value = ObjectId(value)
                     update_data[field] = value
                     changed_fields.append(field)
 

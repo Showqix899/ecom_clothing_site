@@ -9,6 +9,8 @@ from .views import (
     select_cart_items
 )
 
+
+
 urlpatterns = [
     path('', get_cart, name='get_cart'),
 

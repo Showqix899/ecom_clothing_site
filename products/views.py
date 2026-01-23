@@ -304,25 +304,43 @@ def all_subcategories(request):
 #delete category
 @api_view(['DELETE'])
 def delete_category(request, category_id):
-    #getting current user
-    user,error = get_current_user(request)
+    # getting current user
+    user, error = get_current_user(request)
     if error:
         return JsonResponse({'error': error}, status=401)
-    
-    
-    #checking user is admin or moderator
-    if not is_user_admin(user) or is_user_moderator(user):
-        return JsonResponse({'error': 'Unauthorized. Admin  or moderator access required.'}, status=403)
-    
-    
+
+    # checking user is admin or moderator
+    if not (is_user_admin(user) or is_user_moderator(user)):
+        return JsonResponse(
+            {'error': 'Unauthorized. Admin or moderator access required.'},
+            status=403
+        )
+
     if request.method == 'DELETE':
-        category = categories_col.find_one({'_id':ObjectId(category_id)})
-        result = categories_col.delete_one({'_id': ObjectId(category_id)})
-        if result.deleted_count == 0:
+        category = categories_col.find_one({'_id': ObjectId(category_id)})
+        if not category:
             return JsonResponse({'error': 'Category not found.'}, status=404)
-        
-        attribute_delation_log(request,category,user)
+
+        # delete category
+        categories_col.delete_one({'_id': ObjectId(category_id)})
+
+        # log deletion
+        attribute_delation_log(request, category, user)
+
+        # update products linked to this category
+        products_col.update_many(
+            {'category_id': ObjectId(category_id)},
+            {'$set': {
+                'category_id': "undefined",
+                'subcategory_id': "undefined"
+            }}
+        )
+
+        # delete subcategories
+        subcategories_col.delete_many({'parent_id': ObjectId(category_id)})
+
         return JsonResponse({'message': 'Category deleted successfully.'}, status=200)
+
 
 
 #delete subcategory
@@ -346,6 +364,13 @@ def delete_subcategory(request, subcategory_id):
             return JsonResponse({'error': 'Subcategory not found.'}, status=404)
         
         attribute_delation_log(request,subcategory,user)
+        
+        ###edititing all the product associated with this subcategory to have undifined subcategory id
+        products_col.update_many(
+            {'subcategory_id': ObjectId(subcategory_id)},
+            {'$set': {'subcategory_id': "undefined"}}
+        )
+        
         return JsonResponse({'message': 'Subcategory deleted successfully.'}, status=200)
     
  

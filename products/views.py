@@ -613,7 +613,7 @@ def update_product(request, product_id):
                 return data.get(key, [])
 
             # -------- BASIC FIELDS --------
-            for field in ['name', 'description', 'price', 'stock', 'category_id', 'image_urls']:
+            for field in ['name', 'description', 'price', 'stock', 'category_id', 'image_urls','subcategory_id']:
                 value = get_value(field)
                 if value is not None:
                     if field == 'price':

@@ -26,7 +26,6 @@ products_col = db["products"] #product collection
 colors_col = db["colors"] #colors collection
 sizes_col = db["sizes"] #sizes collection
 categories_col = db["categories"] #categories collection
-type_col = db["products_type"] #product types collection
 subcategories_col = db["subcategories"] #subcategories collection
 
 
@@ -376,36 +375,8 @@ def delete_subcategory(request, subcategory_id):
  
 
 
-#----------- product type views -------------------- #
-@api_view(['POSt'])
-def create_type(request):
-    
-    if request.method == 'POST':
-        
-        body = json.loads(request.body)
-        type_name = body.get('type_name')
-        if not type_name:
-            return JsonResponse({'error': 'Type name is required.'}, status=400)
-        
-        # Check if type already exists
-        existiing_type = type_col.find_one({'name': type_name}) 
-        if existiing_type:
-            return JsonResponse({'error': 'Type already exists.'}, status=400)
-        
-        # Insert new type
-        type_data = {'name': type_name.lower()}
-        result = type_col.insert_one(type_data)
-        return JsonResponse({'message': 'Type added successfully.', 'type_id': str(result.inserted_id)}, status=201)
-    
-#delete type
-@api_view(['DELETE'])
-def delete_type(request, type_id):
-    
-    if request.method == 'DELETE':
-        result = type_col.delete_one({'_id': ObjectId(type_id)})
-        if result.deleted_count == 0:
-            return JsonResponse({'error': 'Type not found.'}, status=404)
-        return JsonResponse({'message': 'Type deleted successfully.'}, status=200)
+
+
    
     
 #get all the colors , size and categories
@@ -416,7 +387,6 @@ def get_attributes(request):
         colors = list(colors_col.find({}, {'_id': 1, 'name': 1}))
         sizes = list(sizes_col.find({}, {'_id': 1, 'name': 1}))
         categories = list(categories_col.find({}))
-        types = list(type_col.find({}))
 
         # Convert ObjectId to string for JSON serialization
         for color in colors:
@@ -426,15 +396,13 @@ def get_attributes(request):
         for category in categories:
             category['_id'] = str(category['_id'])
             
-        for type in types:
-            type['_id'] = str(type['_id'])
+        
         
             
         return JsonResponse({
             'colors': colors,
             'sizes': sizes,
             'categories': categories,
-            'types': types
         }, status=200)
 
 
@@ -547,8 +515,6 @@ def get_product_details(request, product_id):
         # Convert ObjectId fields to string
         product['_id'] = str(product['_id'])
 
-        # FIX: convert `type`
-        product['type'] = str(product['type']) if product.get('type') else None
 
         product['category_id'] = str(product['category_id']) if product.get('category_id') else None
         product['subcategory_id'] = str(product['subcategory_id']) if product.get('subcategory_id') else None
@@ -913,7 +879,6 @@ def product_list(request):
     
     # -------- Query Params --------
     search = request.GET.get("search")
-    product_type = request.GET.get("type_id")
     gender = request.GET.get("gender")
     category = request.GET.get("category_id")
     min_price = request.GET.get("min_price")
@@ -934,8 +899,6 @@ def product_list(request):
     if search:
         query["name"] = {"$regex": search, "$options": "i"}
 
-    if product_type:
-        query["type"] = ObjectId(product_type)
 
     if gender:
         query["gender"] = gender
@@ -971,7 +934,6 @@ def product_list(request):
         p["color_ids"] = [str(c) for c in p.get("color_ids", [])]
         p["size_ids"] = [str(s) for s in p.get("size_ids", [])]
         p['subcategory_id'] = str(p['subcategory_id'])
-        p['type'] = str(p['type'])
 
     # -------- Pagination Info --------
     total_pages = math.ceil(total_products / limit)

@@ -70,10 +70,11 @@ def analytics_dashboard(request):
     """
     Combined analytics for admin dashboard:
     - Order status distribution
-    - Total revenue (paid + confirmed)
-    - Average order value (paid + confirmed)
+    - Total revenue (confirmed + paid)
+    - Pending revenue
+    - Canceled revenue
+    - Average order value (confirmed + paid)
     - Revenue summary
-    - Total paid amount
     """
 
     user, err = admin_auth(request)
@@ -83,6 +84,7 @@ def analytics_dashboard(request):
     pipeline = [
         {
             '$facet': {
+
                 # ---------- ORDER STATUS DISTRIBUTION ----------
                 'order_status_distribution': [
                     {'$group': {
@@ -91,18 +93,47 @@ def analytics_dashboard(request):
                     }}
                 ],
 
-                # ---------- TOTAL REVENUE (PAID + CONFIRMED) ----------
+                # ---------- TOTAL REVENUE (CONFIRMED + PAID) ----------
                 'total_revenue': [
-                    {'$match': PAID_CONFIRMED_MATCH},
+                    {'$match': {
+                        'order_status': 'confirmed',
+                        'payment_status': 'paid'
+                    }},
                     {'$group': {
                         '_id': None,
                         'value': {'$sum': '$total_price'}
                     }}
                 ],
 
-                # ---------- AVERAGE ORDER VALUE ----------
+                # ---------- PENDING REVENUE (PENDING + PAID) ----------
+                'pending_revenue': [
+                    {'$match': {
+                        'order_status': 'pending',
+                        'payment_status': 'paid'
+                    }},
+                    {'$group': {
+                        '_id': None,
+                        'value': {'$sum': '$total_price'}
+                    }}
+                ],
+
+                # ---------- CANCELED REVENUE ----------
+                'canceled_revenue': [
+                    {'$match': {
+                        'order_status': 'cancelled'
+                    }},
+                    {'$group': {
+                        '_id': None,
+                        'value': {'$sum': '$total_price'}
+                    }}
+                ],
+
+                # ---------- AVERAGE ORDER VALUE (CONFIRMED + PAID) ----------
                 'average_order_value': [
-                    {'$match': PAID_CONFIRMED_MATCH},
+                    {'$match': {
+                        'order_status': 'confirmed',
+                        'payment_status': 'paid'
+                    }},
                     {'$group': {
                         '_id': None,
                         'total': {'$sum': '$total_price'},
@@ -130,15 +161,6 @@ def analytics_dashboard(request):
                         'revenue': {'$sum': '$total_price'},
                         'orders': {'$sum': 1}
                     }}
-                ],
-
-                # ---------- TOTAL PAID AMOUNT ----------
-                'total_paid_amount': [
-                    {'$match': {'payment_status': 'paid'}},
-                    {'$group': {
-                        '_id': None,
-                        'value': {'$sum': '$total_price'}
-                    }}
                 ]
             }
         }
@@ -156,20 +178,23 @@ def analytics_dashboard(request):
             if data['total_revenue'] else 0
         ),
 
+        'pending_revenue': (
+            data['pending_revenue'][0]['value']
+            if data['pending_revenue'] else 0
+        ),
+
+        'canceled_revenue': (
+            data['canceled_revenue'][0]['value']
+            if data['canceled_revenue'] else 0
+        ),
+
         'average_order_value': (
             data['average_order_value'][0]['value']
             if data['average_order_value'] else 0
         ),
 
-        'total_paid_amount': (
-            data['total_paid_amount'][0]['value']
-            if data['total_paid_amount'] else 0
-        ),
-
         'revenue_summary': serialize_mongo(data['revenue_summary']),
     })
-
-
 # =====================================================
 # ============== PRODUCT & CATEGORY ===================
 # =====================================================

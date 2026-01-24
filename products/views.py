@@ -467,7 +467,6 @@ def create_product(request):
             size_ids = request.POST.getlist('size_ids')
             images = request.FILES.getlist('images')
             gender = request.POST.get('gender', 'unisex')
-            type = request.POST.get('type_id')
             
             if not name or not description or price <= 0 or stock < 0:
                 return JsonResponse({'error': 'Please provide valid product details.'}, status=400)
@@ -507,7 +506,6 @@ def create_product(request):
                 'name': name,
                 'description': description,
                 'gender': gender,
-                'type': ObjectId(type),
                 'price': price,
                 'category_id': ObjectId(category_id) if category_id else None,
                 'subcategory_id': ObjectId(subcategory_id) if subcategory_id else None,

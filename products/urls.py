@@ -20,9 +20,7 @@ urlpatterns = [
     path('get-subcategories/<str:category_id>/', views.list_subcategories, name='get_subcategories'),
     path('all-subcategories/', views.all_subcategories, name='all_subcategories'),
     
-    # types
-    path('add-type/', views.create_type, name='add_type'),
-    path('delete-type/<str:type_id>/', views.delete_type, name='delete_type'),
+
     
     
     #get all attributes

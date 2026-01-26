@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     'cloudinary_storage',
     'rest_framework',
     'corsheaders',
+    'drf_yasg',
     
 ]
 
@@ -148,7 +149,6 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
-
 
 #claudinary settings
 import cloudinary

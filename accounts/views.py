@@ -342,7 +342,7 @@ def create_modarator_or_admin(request,user_id):
     role = body.get('role')
     
     
-    if role not in ['admin','moderator','user']:
+    if role not in ['admin','moderator']:
         return JsonResponse({"error":"role must be either 'admin' or 'moderator'"})
 
     #check if user exists

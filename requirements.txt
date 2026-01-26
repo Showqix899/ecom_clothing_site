@@ -14,7 +14,6 @@ dnspython==2.8.0
 bcrypt==5.0.0
 passlib==1.7.4
 PyJWT==2.10.1
-winkerberos==0.12.2
 
 # Cloudinary (file/media storage)
 cloudinary==1.44.1

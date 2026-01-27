@@ -102,8 +102,9 @@ def place_order(request):
                 {'error': 'Too late! One or more products are out of stock'},
                 status=400
             )
-
-        subtotal = item['price_at_add'] * quantity
+        if item['discount'] >0 and item['discount'] <1:
+            item['price_at_add'] = round(update_result['price'] * (1 - item['discount']),2) 
+        subtotal = item['price_at_add'] * quantity 
         total_price += subtotal
 
         order_items.append({

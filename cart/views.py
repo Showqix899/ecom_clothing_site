@@ -58,6 +58,7 @@ def add_to_cart(request):
     quantity = int(data.get('quantity', 1))
 
     product = products_col.find_one({'_id': product_id})
+    discount = product.get('discount')
     if not product:
         return JsonResponse({'error': 'Product not found'}, status=404)
 
@@ -79,7 +80,8 @@ def add_to_cart(request):
             'size_id': size_id,
             'quantity': quantity,
             'price_at_add': product['price'],
-            'is_selected': False
+            'is_selected': False,
+            'discount': discount if discount else 0,
         })
 
     carts_col.update_one(

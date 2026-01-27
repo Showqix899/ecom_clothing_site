@@ -435,6 +435,7 @@ def create_product(request):
             size_ids = request.POST.getlist('size_ids')
             images = request.FILES.getlist('images')
             gender = request.POST.get('gender', 'unisex')
+            discount = float(request.POST.get('discount', 0))
             
             if not name or not description or price <= 0 or stock < 0:
                 return JsonResponse({'error': 'Please provide valid product details.'}, status=400)
@@ -455,6 +456,10 @@ def create_product(request):
 
             if not color_ids or not size_ids:
                 return JsonResponse({'error': 'Color and size are required'}, status=400)
+            if discount:
+                if discount <= 0 or discount >= 1:
+                    return JsonResponse({'error': 'Discount must be between 0 and 1.'}, status=400)
+                
             
             #check if the subcategory belongs to category
             if subcategory_id:
@@ -482,6 +487,7 @@ def create_product(request):
                 'image_urls': image_urls,
                 'stock': stock,
                 'sold_count': 0,
+                'discount': discount,
                 'created_by': user['email'],
                 'created_at': datetime.now(timezone.utc),
                 'updated_at': None

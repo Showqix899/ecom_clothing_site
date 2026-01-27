@@ -37,6 +37,7 @@ def add_banner(request):
     title = request.POST.get("title")
     subtitle = request.POST.get("subtitle")
     banner_image = request.FILES.get('banner_image')
+    type = request.POST.get('type')
     created_by = str(user['_id'])
     created_at = datetime.now(timezone.utc)
     
@@ -54,6 +55,9 @@ def add_banner(request):
     
     if subtitle:
         banner_data['subtitle'] = subtitle
+        
+    if type:
+        banner_data['type'] = type
         
     if not banner_image:
         return JsonResponse({"error":"please upload an image"})
@@ -134,6 +138,9 @@ def search_banner(request):
     title = request.GET.get('title')
     subtitle = request.GET.get('subtitle')
     ban_id = request.GET.get('id')
+    type = request.GET.get('type')
+    
+     # -------- BUILD QUERY --------
     
     query = {}
     if ban_id:
@@ -142,6 +149,9 @@ def search_banner(request):
         query['title'] = title
     if subtitle:
         query['subtitle'] = subtitle
+    
+    if type:
+        query['type'] = type
 
     try:
         banners_cursor = banner_col.find(query)

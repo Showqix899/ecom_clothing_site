@@ -154,7 +154,7 @@ def search_banner(request):
         query['type'] = type
 
     try:
-        banners_cursor = banner_col.find(query)
+        banners_cursor = banner_col.find(query).sort('created_at', -1)
         banners_list = [serialize_banner(ban) for ban in banners_cursor]
         count = len(banners_list)
 

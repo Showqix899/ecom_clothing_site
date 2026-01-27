@@ -320,11 +320,16 @@ def refresh_token(request):
 @api_view(['PUT'])
 def create_modarator_or_admin(request,user_id):
     
+    
+    
     if request.method != "PUT":
         return JsonResponse({"error": "POST method required"}, status=405)
 
     body = json.loads(request.body)
     user,error= get_current_user(request)
+    
+    
+    
     
     if error:
         return JsonResponse({"error":error})

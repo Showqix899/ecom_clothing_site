@@ -124,6 +124,8 @@ def place_order(request):
     # -------- CREATE ORDER --------
     order = {
         'user_id': ObjectId(user['_id']),
+        'email':user['email'],
+        'phone':user['phone'],
         'items': order_items,
         'shipping_address': shipping_address,
         'total_price': total_price,
@@ -298,6 +300,7 @@ def search_orders(request):
 
     # -------- QUERY PARAMS --------
     user_id = request.GET.get('user_id')
+    user_email = request.GET.get('user_email')
     order_status = request.GET.get('status')
     payment_status = request.GET.get('payment_status')
     product_name = request.GET.get('product_name')
@@ -307,7 +310,8 @@ def search_orders(request):
 
     date_range = request.GET.get('date_range')   # today | this_week | this_month | this_year
     month = request.GET.get('month')             # 1 - 12
-    year = request.GET.get('year')               # YYYY
+    year = request.GET.get('year')# YYYY
+    phone_number = request.GET.get('phone_number')
 
     # -------- PAGINATION --------
     try:
@@ -336,6 +340,16 @@ def search_orders(request):
 
     if payment_status:
         query['payment_status'] = payment_status
+    
+    if phone_number:
+        query['phone'] = phone_number
+    
+    if user_email:
+        query['email'] = {'$regex': user_email, '$options': 'i'}
+    
+   
+        
+        
 
     # -------- PRICE RANGE --------
     if min_price or max_price:

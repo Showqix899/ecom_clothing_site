@@ -583,7 +583,7 @@ def update_product(request, product_id):
                 return data.get(key, [])
 
             # -------- BASIC FIELDS --------
-            for field in ['name', 'description', 'price', 'stock', 'category_id', 'image_urls','subcategory_id']:
+            for field in ['name', 'description', 'price', 'stock', 'category_id', 'image_urls','subcategory_id','discount']:
                 value = get_value(field)
                 if value is not None:
                     if field == 'price':
@@ -594,6 +594,8 @@ def update_product(request, product_id):
                         value = ObjectId(value)
                     elif field == 'subcategory_id':
                         value = ObjectId(value)
+                    elif field == 'discount':
+                        value = float(value)
                     update_data[field] = value
                     changed_fields.append(field)
 

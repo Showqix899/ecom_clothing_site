@@ -466,14 +466,34 @@ def create_product(request):
                 if not subcategory_id:
                     return JsonResponse({'error': 'Subcategory ID is required.'}, status=400)
                 subcategory = subcategories_col.find_one({'_id': ObjectId(subcategory_id)})
+                
+                if not subcategory:
+                    return JsonResponse({"error":"sub category not found or does not belong to the category"})
                 print(f'{subcategory} == {category_id}')
                 if str(subcategory['parent_id']) != category_id:
                     return JsonResponse({'error': 'Subcategory does not belong to the specified category.'}, status=400)
 
             image_urls = []
+
             for image in images:
-                upload = cloudinary.uploader.upload(image)
-                image_urls.append(upload['secure_url'])
+                upload = cloudinary.uploader.upload(
+                    image,
+                    folder="products",   # optional
+                    transformation=[
+                        {
+                            "width": 800,
+                            "height": 800,
+                            "crop": "limit"   # keeps aspect ratio
+                        },
+                        {
+                            "quality": "auto:good",   # compress
+                            "fetch_format": "auto"    # webp/avif if supported
+                        }
+                    ]
+                )
+
+                image_urls.append(upload["secure_url"])
+
 
             product_data = {
                 'name': name,
@@ -640,7 +660,7 @@ def update_product(request, product_id):
             )
 
             # ---------- FETCH UPDATED PRODUCT ----------
-            updated_product = products_col.find_one({'_id': ObjectId(product_id)})
+            # updated_product = products_col.find_one({'_id': ObjectId(product_id)})
             
             product_update_log(update_data,product, user)
 

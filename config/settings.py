@@ -32,6 +32,7 @@ ALLOWED_HOSTS = [
     "127.0.0.1",
     ".onrender.com",
     "94.136.191.46",
+    "zingfashion.com",
 ]
 
 # Application definition

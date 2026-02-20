@@ -760,7 +760,8 @@ import math
 @api_view(["GET"])
 def get_products(request):
     try:
-        products = products_col.find({})
+        products_cursor = products_col.find({})
+        products = list(products_cursor)   # ✅ convert cursor to list
 
         if not products:
             return JsonResponse({"error": "no product found"})
@@ -768,16 +769,15 @@ def get_products(request):
         # Convert ObjectId → string
         for p in products:
             p["_id"] = str(p["_id"])
-            p["category_id"] = str(p["category_id"])
+            p["category_id"] = str(p.get("category_id")) if p.get("category_id") else None
             p["color_ids"] = [str(c) for c in p.get("color_ids", [])]
             p["size_ids"] = [str(s) for s in p.get("size_ids", [])]
-            p["subcategory_id"] = str(p["subcategory_id"])
-        
-        return JsonResponse({"products":products})
+            p["subcategory_id"] = str(p.get("subcategory_id")) if p.get("subcategory_id") else None
+
+        return JsonResponse({"products": products}, safe=False)
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
-
 
 # update product images add or remove
 

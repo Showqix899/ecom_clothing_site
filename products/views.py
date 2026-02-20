@@ -479,6 +479,7 @@ def create_product(request):
                 upload = cloudinary.uploader.upload(
                     image,
                     folder="products",   # optional
+                    format="webp",
                     transformation=[
                         {
                             "width": 800,
@@ -817,8 +818,23 @@ def update_product_images(request, product_id):
             )
 
         for image in add_images:
-            upload = cloudinary.uploader.upload(image)
-            existing_images.append(upload['secure_url'])
+            upload = cloudinary.uploader.upload(
+            image,
+            folder="products",
+            format="webp",  # Force WebP
+            transformation=[
+                {
+                    "width": 800,
+                    "height": 800,
+                    "crop": "limit"
+                },
+                {
+                    "quality": "auto:good"
+                }
+            ]
+        )
+
+        existing_images.append(upload["secure_url"])
 
         # -------- REMOVE DUPLICATES --------
         existing_images = list(dict.fromkeys(existing_images))

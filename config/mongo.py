@@ -1,13 +1,9 @@
-import os
 from pymongo import MongoClient
-import certifi
+import os
 from dotenv import load_dotenv
+
 load_dotenv()
 
-client = MongoClient(
-    os.getenv('MONGO_URI'),
-    tls=True,
-    tlsCAFile=certifi.where()
-)
+client = MongoClient(os.getenv("MONGO_URI"))
 
-db = client['hexdexter47_db_user']
+db = client["zing_db_user"]

@@ -28,11 +28,14 @@ SECRET_KEY = os.getenv('django_secret')
 DEBUG = False
 
 ALLOWED_HOSTS = [
-    "localhost",
-    "127.0.0.1",
-    ".onrender.com",
     "94.136.191.46",
     "zingfashion.com",
+    "www.zingfashion.com"
+]
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://zingfashion.com",
+    "https://www.zingfashion.com",
 ]
 
 # Application definition

@@ -9,13 +9,13 @@ from django.urls import path,include
 urlpatterns = [
 
     path('admin/', admin.site.urls),
-    path('auth/',include('accounts.urls')),
-    path('products/',include('products.urls')),
-    path('cart/',include('cart.urls')),
-    path('order/',include('order.urls')),
-    path('logs/',include('log.urls')),
-    path('banner/',include('banner.urls')),
-    path('analytics/',include('analytics.urls')),
-    path('traffic/',include('user_traffic.urls')),
+    path('api/auth/',include('accounts.urls')),
+    path('api/products/',include('products.urls')),
+    path('api/cart/',include('cart.urls')),
+    path('api/order/',include('order.urls')),
+    path('api/logs/',include('log.urls')),
+    path('api/banner/',include('banner.urls')),
+    path('api/analytics/',include('analytics.urls')),
+    path('api/traffic/',include('user_traffic.urls')),
     
 ]

@@ -820,7 +820,7 @@ def update_product_images(request, product_id):
         existing_images = product.get("image_urls", [])
 
         # -------- REMOVE IMAGES --------
-        remove_images_str = data.get("remove_images", [])  # text field from form-data
+        remove_images_str = data.get("remove_images", "[]")  # text field from form-data
         try:
             remove_images = json.loads(remove_images_str)  # try JSON list
             if not isinstance(remove_images, list):
@@ -968,6 +968,8 @@ def product_list(request):
     min_price = request.GET.get("min_price")
     max_price = request.GET.get("max_price")
     sub_category = request.GET.get("subcategory_id")
+    instock = request.GET.get("instock")
+    outstock = request.GET.get("outstock")
 
     # Pagination
     page = int(request.GET.get("page", 1))
@@ -994,27 +996,48 @@ def product_list(request):
     if min_price or max_price:
         query["price"] = {}
         if min_price:
-            query["price"]["$gte"] = int(min_price)
+            query["price"]["$gte"] = float(min_price)
         if max_price:
-            query["price"]["$lte"] = int(max_price)
+            query["price"]["$lte"] = float(max_price)
+
+    # -------- STOCK FILTER --------
+    # Convert string to boolean safely
+    instock = str(instock).lower() == "true"
+    outstock = str(outstock).lower() == "true"
+
+    if instock and not outstock:
+        query["stock"] = {"$gt": 0}
+
+    elif outstock and not instock:
+        query["stock"] = {"$eq": 0}
+
+    # If both true → ignore stock filter
+    # If both false → ignore stock filter
 
     # -------- Fetch Data --------
     total_products = products_col.count_documents(query)
 
     products = list(
-        products_col.find(query).skip(skip).limit(limit).sort("created_at", -1)
+        products_col.find(query)
+        .skip(skip)
+        .limit(limit)
+        .sort("created_at", -1)
     )
 
     # Convert ObjectId → string
     for p in products:
         p["_id"] = str(p["_id"])
         p["category_id"] = str(p["category_id"])
+        p["subcategory_id"] = str(p["subcategory_id"])
         p["color_ids"] = [str(c) for c in p.get("color_ids", [])]
         p["size_ids"] = [str(s) for s in p.get("size_ids", [])]
-        p["subcategory_id"] = str(p["subcategory_id"])
+        p["created_at"] = p["created_at"].isoformat()
+        p["updated_at"] = (
+            p["updated_at"].isoformat() if p.get("updated_at") else None
+        )
 
     # -------- Pagination Info --------
-    total_pages = math.ceil(total_products / limit)
+    total_pages = math.ceil(total_products / limit) if limit > 0 else 1
 
     return JsonResponse(
         {
@@ -1028,7 +1051,6 @@ def product_list(request):
         },
         safe=False,
     )
-
 
 # #product image updation
 # @api_view(["GET", "PUT", "PATCH"])

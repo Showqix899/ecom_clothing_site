@@ -30,15 +30,17 @@ DEBUG = False
 ALLOWED_HOSTS = [
     "94.136.191.46",
     "zingfashion.com",
-    "www.zingfashion.com"
+    "www.zingfashion.com",
+    "127.0.0.1:",
+    "*"
 ]
 
-CSRF_TRUSTED_ORIGINS = [
-    "https://zingfashion.com",
-    "https://www.zingfashion.com",
-]
-SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-# Application definition
+# CSRF_TRUSTED_ORIGINS = [
+#     "https://zingfashion.com",
+#     "https://www.zingfashion.com",
+# ]
+# SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+# # Application definition
 
 INSTALLED_APPS = [
     'django.contrib.admin',

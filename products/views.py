@@ -49,11 +49,17 @@ def add_color(request):
         )
 
     # adding color
-    if request.method == "POST":
-        body = json.loads(request.body)
+    try:
+        if request.method == "POST":
+            body = json.loads(request.body)
         color_name = body.get("color_name")
+        color_hash = body.get("color_hash")
+        
         if not color_name:
             return JsonResponse({"error": "Color name is required."}, status=400)
+        
+        if not color_hash:
+            return JsonResponse({"error":"Color hash is required."},status=400)
 
         # Check if color already exists
         existing_color = colors_col.find_one({"name": color_name})
@@ -61,12 +67,15 @@ def add_color(request):
             return JsonResponse({"error": "Color already exists."}, status=400)
 
         # Insert new color
-        color_data = {"name": color_name.lower()}
+        color_data = {
+            "name": color_name.lower(),
+            "color_hash":color_hash,
+        }
         result = colors_col.insert_one(color_data)
 
         # adding log
         color = colors_col.find_one({"_id": ObjectId(result.inserted_id)})
-        attribute_creation_log(request, color, user)
+        # attribute_creation_log(request, color, user)
 
         return JsonResponse(
             {
@@ -74,6 +83,13 @@ def add_color(request):
                 "color_id": str(result.inserted_id),
             },
             status=201,
+        )
+    except Exception as e:
+        print("error at color add")
+        return JsonResponse(
+            {
+                "error":str(e)
+            }
         )
 
 
@@ -383,7 +399,7 @@ def delete_subcategory(request, subcategory_id):
 def get_attributes(request):
 
     if request.method == "GET":
-        colors = list(colors_col.find({}, {"_id": 1, "name": 1}))
+        colors = list(colors_col.find({}, {"_id": 1, "name": 1,"color_hash": 1}))
         sizes = list(sizes_col.find({}, {"_id": 1, "name": 1}))
         categories = list(categories_col.find({}))
 
@@ -804,7 +820,7 @@ def update_product_images(request, product_id):
         existing_images = product.get("image_urls", [])
 
         # -------- REMOVE IMAGES --------
-        remove_images_str = data.get("remove_images", "[]")  # text field from form-data
+        remove_images_str = data.get("remove_images", [])  # text field from form-data
         try:
             remove_images = json.loads(remove_images_str)  # try JSON list
             if not isinstance(remove_images, list):
@@ -1012,3 +1028,131 @@ def product_list(request):
         },
         safe=False,
     )
+
+
+# #product image updation
+# @api_view(["GET", "PUT", "PATCH"])
+# def update_product(request, product_id):
+#     try:
+#         # ---------------- AUTH ----------------
+#         user, error = get_current_user(request)
+#         if error:
+#             return JsonResponse({"error": error}, status=401)
+
+#         if not (is_user_admin(user) or is_user_moderator(user)):
+#             return JsonResponse({"error": "Unauthorized. Admin or moderator access required."}, status=403)
+
+#         # ---------------- GET PRODUCT ----------------
+#         product = products_col.find_one({"_id": ObjectId(product_id)})
+#         if not product:
+#             return JsonResponse({"error": "Product not found"}, status=404)
+
+#         # ---------------- GET METHOD ----------------
+#         if request.method == "GET":
+#             product["_id"] = str(product["_id"])
+#             product["category_id"] = str(product.get("category_id")) if product.get("category_id") else None
+#             product["subcategory_id"] = str(product.get("subcategory_id")) if product.get("subcategory_id") else None
+#             product["color_ids"] = [str(c) for c in product.get("color_ids", [])]
+#             product["size_ids"] = [str(s) for s in product.get("size_ids", [])]
+#             product["created_at"] = product["created_at"].isoformat()
+#             product["updated_at"] = product.get("updated_at").isoformat() if product.get("updated_at") else None
+#             return JsonResponse({"product": product}, status=200)
+
+#         # ---------------- PARSE DATA ----------------
+#         if request.content_type.startswith("multipart/form-data"):
+#             parser = MultiPartParser(request.META, request, request.upload_handlers)
+#             data, files = parser.parse()
+#         else:
+#             try:
+#                 data = json.loads(request.body)
+#                 files = None
+#             except:
+#                 return JsonResponse({"error": "Invalid request body"}, status=400)
+
+#         # ---------------- BUILD UPDATE ----------------
+#         update_ops = {"$set": {"updated_at": datetime.now(timezone.utc)}}
+#         array_ops = {}  # $addToSet and $pull
+
+#         # Basic fields
+#         for field in ["name", "description", "price", "stock", "category_id", "subcategory_id", "discount"]:
+#             value = data.get(field)
+#             if value is not None:
+#                 if field in ["price", "discount"]:
+#                     value = float(value)
+#                 elif field == "stock":
+#                     value = int(value)
+#                 elif field in ["category_id", "subcategory_id"]:
+#                     value = ObjectId(value)
+#                 update_ops["$set"][field] = value
+
+#         # Colors
+#         add_colors = data.get("add_color_ids", [])
+#         remove_colors = data.get("remove_color_ids", [])
+#         if add_colors:
+#             array_ops.setdefault("$addToSet", {})["color_ids"] = {"$each": [ObjectId(c) for c in add_colors]}
+#         if remove_colors:
+#             array_ops.setdefault("$pull", {})["color_ids"] = {"$in": [ObjectId(c) for c in remove_colors]}
+
+#         # Sizes
+#         add_sizes = data.get("add_size_ids", [])
+#         remove_sizes = data.get("remove_size_ids", [])
+#         if add_sizes:
+#             array_ops.setdefault("$addToSet", {})["size_ids"] = {"$each": [ObjectId(s) for s in add_sizes]}
+#         if remove_sizes:
+#             array_ops.setdefault("$pull", {})["size_ids"] = {"$in": [ObjectId(s) for s in remove_sizes]}
+
+#         # Images
+#         existing_images = product.get("image_urls", [])
+
+#         # Remove images
+#         remove_images_raw = data.get("remove_images")
+#         if remove_images_raw:
+#             try:
+#                 remove_images = json.loads(remove_images_raw)
+#             except:
+#                 remove_images = [s.strip() for s in remove_images_raw.split(",") if s.strip()]
+#             array_ops.setdefault("$pull", {})["image_urls"] = {"$in": remove_images}
+
+#         # Add new images (multipart)
+#         if files:
+#             add_images = files.getlist("add_images")
+#             uploaded_urls = []
+#             for image in add_images:
+#                 upload = cloudinary.uploader.upload(
+#                     image,
+#                     folder="products",
+#                     format="webp",
+#                     transformation=[{"width": 800, "height": 800, "crop": "limit"}, {"quality": "auto:good"}],
+#                 )
+#                 uploaded_urls.append(upload["secure_url"])
+#             if uploaded_urls:
+#                 array_ops.setdefault("$addToSet", {})["image_urls"] = {"$each": uploaded_urls}
+
+#         # Combine updates
+#         final_update = update_ops.copy()
+#         final_update.update(array_ops)
+
+#         # Apply update
+#         products_col.update_one({"_id": ObjectId(product_id)}, final_update)
+
+#         # Fetch final product
+#         product = products_col.find_one({"_id": ObjectId(product_id)})
+#         product["color_ids"] = [str(c) for c in product.get("color_ids", [])]
+#         product["size_ids"] = [str(s) for s in product.get("size_ids", [])]
+
+#         return JsonResponse({
+#             "message": "Product updated successfully",
+#             "product": {
+#                 "name": product["name"],
+#                 "price": product["price"],
+#                 "stock": product["stock"],
+#                 "color_ids": product["color_ids"],
+#                 "size_ids": product["size_ids"],
+#                 "image_urls": product.get("image_urls", []),
+#                 "category_id": str(product.get("category_id")) if product.get("category_id") else None,
+#                 "subcategory_id": str(product.get("subcategory_id")) if product.get("subcategory_id") else None
+#             }
+#         }, status=200)
+
+#     except Exception as e:
+#         return JsonResponse({"error": "Internal server error", "details": str(e)}, status=500)

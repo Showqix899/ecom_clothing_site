@@ -38,6 +38,11 @@ CSRF_TRUSTED_ORIGINS = [
     "https://www.zingfashion.com",
 ]
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+
+SECURE_SSL_REDIRECT = True           # redirect all HTTP → HTTPS
+SESSION_COOKIE_SECURE = True         # cookies only sent over HTTPS
+CSRF_COOKIE_SECURE = True            # CSRF cookie only over HTTPS
 # # Application definition
 
 INSTALLED_APPS = [
@@ -79,7 +84,6 @@ MIDDLEWARE = [
 
 
 # CORS settings for development
-CORS_ALLOW_ALL_ORIGINS = True
 # CORS settings for production
 # CORS_ALLOWED_ORIGINS = [
 #     "http://localhost:3000",

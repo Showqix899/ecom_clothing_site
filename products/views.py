@@ -956,91 +956,97 @@ def export_products_csv(request):
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
 
+from bson.errors import InvalidId
+
 
 # filter and search products
 @api_view(["GET"])
 def product_list(request):
 
-    # -------- Query Params --------
-    search = request.GET.get("search")
-    gender = request.GET.get("gender")
-    category = request.GET.get("category_id")
-    min_price = request.GET.get("min_price")
-    max_price = request.GET.get("max_price")
-    sub_category = request.GET.get("subcategory_id")
-    instock = request.GET.get("instock")
-    outstock = request.GET.get("outstock")
+    try:
+        search = request.GET.get("search")
+        gender = request.GET.get("gender")
+        category = request.GET.get("category_id")
+        sub_category = request.GET.get("subcategory_id")
+        min_price = request.GET.get("min_price")
+        max_price = request.GET.get("max_price")
+        instock = request.GET.get("instock")
+        outstock = request.GET.get("outstock")
 
-    # Pagination
-    page = int(request.GET.get("page", 1))
-    limit = int(request.GET.get("limit", 10))
-    skip = (page - 1) * limit
+        # Pagination safe
+        try:
+            page = max(int(request.GET.get("page", 1)), 1)
+            limit = max(int(request.GET.get("limit", 10)), 1)
+        except:
+            return JsonResponse({"error": "Invalid pagination"}, status=400)
 
-    # -------- MongoDB Filter --------
-    query = {}
+        skip = (page - 1) * limit
 
-    # Search by name (case-insensitive)
-    if search:
-        query["name"] = {"$regex": search, "$options": "i"}
+        query = {}
 
-    if gender:
-        query["gender"] = gender
+        if search:
+            query["name"] = {"$regex": search, "$options": "i"}
 
-    if category:
-        query["category_id"] = ObjectId(category)
+        if gender:
+            query["gender"] = gender
 
-    if sub_category:
-        query["subcategory_id"] = ObjectId(sub_category)
+        if category:
+            try:
+                query["category_id"] = ObjectId(category)
+            except InvalidId:
+                return JsonResponse({"error": "Invalid category_id"}, status=400)
 
-    # Price range
-    if min_price or max_price:
-        query["price"] = {}
-        if min_price:
-            query["price"]["$gte"] = float(min_price)
-        if max_price:
-            query["price"]["$lte"] = float(max_price)
+        if sub_category:
+            try:
+                query["subcategory_id"] = ObjectId(sub_category)
+            except InvalidId:
+                return JsonResponse({"error": "Invalid subcategory_id"}, status=400)
 
-    # -------- STOCK FILTER --------
-    # Convert string to boolean safely
-    instock = str(instock).lower() == "true"
-    outstock = str(outstock).lower() == "true"
+        if min_price or max_price:
+            query["price"] = {}
+            if min_price:
+                query["price"]["$gte"] = float(min_price)
+            if max_price:
+                query["price"]["$lte"] = float(max_price)
 
-    if instock and not outstock:
-        query["stock"] = {"$gt": 0}
+        instock = str(instock).lower() == "true"
+        outstock = str(outstock).lower() == "true"
 
-    elif outstock and not instock:
-        query["stock"] = {"$eq": 0}
+        if instock and not outstock:
+            query["stock"] = {"$gt": 0}
+        elif outstock and not instock:
+            query["stock"] = {"$eq": 0}
 
-    # If both true → ignore stock filter
-    # If both false → ignore stock filter
+        total_products = products_col.count_documents(query)
 
-    # -------- Fetch Data --------
-    total_products = products_col.count_documents(query)
-
-    products = list(
-        products_col.find(query)
-        .skip(skip)
-        .limit(limit)
-        .sort("created_at", -1)
-    )
-
-    # Convert ObjectId → string
-    for p in products:
-        p["_id"] = str(p["_id"])
-        p["category_id"] = str(p["category_id"])
-        p["subcategory_id"] = str(p["subcategory_id"])
-        p["color_ids"] = [str(c) for c in p.get("color_ids", [])]
-        p["size_ids"] = [str(s) for s in p.get("size_ids", [])]
-        p["created_at"] = p["created_at"].isoformat()
-        p["updated_at"] = (
-            p["updated_at"].isoformat() if p.get("updated_at") else None
+        products = list(
+            products_col.find(query)
+            .skip(skip)
+            .limit(limit)
+            .sort("_id", -1)
         )
 
-    # -------- Pagination Info --------
-    total_pages = math.ceil(total_products / limit) if limit > 0 else 1
+        for p in products:
+            p["_id"] = str(p.get("_id"))
 
-    return JsonResponse(
-        {
+            if p.get("category_id"):
+                p["category_id"] = str(p["category_id"])
+
+            if p.get("subcategory_id"):
+                p["subcategory_id"] = str(p["subcategory_id"])
+
+            p["color_ids"] = [str(c) for c in p.get("color_ids", [])]
+            p["size_ids"] = [str(s) for s in p.get("size_ids", [])]
+
+            if p.get("created_at") and hasattr(p["created_at"], "isoformat"):
+                p["created_at"] = p["created_at"].isoformat()
+
+            if p.get("updated_at") and hasattr(p["updated_at"], "isoformat"):
+                p["updated_at"] = p["updated_at"].isoformat()
+
+        total_pages = math.ceil(total_products / limit) if limit else 1
+
+        return JsonResponse({
             "page": page,
             "limit": limit,
             "total_products": total_products,
@@ -1048,10 +1054,13 @@ def product_list(request):
             "has_next": page < total_pages,
             "has_prev": page > 1,
             "results": products,
-        },
-        safe=False,
-    )
+        })
 
+    except Exception as e:
+        return JsonResponse({
+            "error": "Internal Server Error",
+            "details": str(e)
+        }, status=500)
 # #product image updation
 # @api_view(["GET", "PUT", "PATCH"])
 # def update_product(request, product_id):
